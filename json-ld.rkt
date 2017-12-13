@@ -40,17 +40,18 @@
   (raise 'json-ld-error "remote resolver not implemented yet :)"))
 
 (define (absolute-uri? obj)
-  "Check if OBJ is an absolute uri or not.
-
-If #:sloppy is true (the default), just ensure that this is a string
-with a #\\: in it."
-  (and (string? obj)
-       (string-contains? obj ":")))
+  "Check if OBJ is an absolute uri or not."
+  (match obj
+    ((? string?)
+     (string-contains? obj ":"))
+    ((? symbol?)
+     (string-contains? (symbol->string obj) ":"))
+    (_ #f)))
 
 ;; @@: For ease of converting
 (define string-startswith? string-prefix?)
 
-(define jsobj? hash-eq?)
+(define jsobj? (lambda (x) (and (hash? x) (hash-eq? x))))
 (define %nothing '(nothing))
 
 ;;; Helpers for legacy code
@@ -63,8 +64,9 @@ with a #\\: in it."
   (hash-set htbl key val))
 
 (define (jsobj-assoc obj key)
-  (hash-assoc obj key))
-(define jsobj-ref hash-ref)
+  (hash-assoc key obj))
+(define (jsobj-ref obj key)
+  (hash-ref obj key #f))
 
 (define (blank-node? obj)
   "See if OBJ is a blank node (a string that starts with \"_:\")"
@@ -128,13 +130,13 @@ rathr than #t if true (#f of course if false)"
 ;; ... helper funcs
 (define (active-context-terms-assoc key active-context)
   "Pull key out of a active-context's mapping"
-  (hash-ref (active-context-terms active-context) key))
+  (hash-ref (active-context-terms active-context) key #f))
 
 (define (active-context-terms-cons key val active-context)
   "Assign key to value in a active-context's mapping and return new active-context"
   (copy-active-context
    active-context
-   [terms (hash-ref (active-context-terms active-context)
+   [terms (hash-set (active-context-terms active-context)
                     key val)]))
 
 (define (active-context-terms-delete key active-context)
@@ -511,7 +513,7 @@ remaining context information to process from local-context"
                                                 #:vocab #t #:document-relative #f
                                                 #:local-context local-context
                                                 #:defined defined)])
-                     (when (not (string-contains? expanded-iri ":"))
+                     (when (not (absolute-uri? expanded-iri))
                        ;; Uhoh
                        (raise 'json-ld-error
                               "invalid IRI mapping"))
@@ -586,9 +588,9 @@ remaining context information to process from local-context"
                               active-context defined))))
 
                  ;; sec 14
-                 ((string-contains? term ":")
+                 ((absolute-uri? term)
                   ;; Check for compact iri
-                  (match (string-split term ":")
+                  (match (string-split (symbol->string term) ":")
                     ((list prefix suffix-list ...)
                      (let-values ([(active-context defined)
                                    ;; see if we should update the context...
@@ -714,8 +716,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
            active-context
            defined))
          ;; 4
-         ((string-contains? value ":")
-          (let* ((split-string (string-split value #\:))
+         ((absolute-uri? value)
+          (let* ((split-string (string-split value ":"))
                  (prefix (car split-string))
                  (suffix (string-join (cdr split-string) ":")))
             (if (or (equal? prefix "_")
@@ -830,7 +832,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
         (cond
          ;; 7.3
          ((or (eq? 'null expanded-property)
-              (not (or (string-contains? expanded-property ":")
+              (not (or (absolute-uri? expanded-property)
                        (json-ld-keyword? expanded-property))))
           ;; carry on to the next key
           (return result active-context))
