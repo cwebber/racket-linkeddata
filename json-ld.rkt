@@ -212,7 +212,7 @@ fold instead of fold-right >:)"
 (define (pk . vals)
   "Peek at values for print debugging, but return 'em"
   (display ";;; ")
-  (display vals)
+  (write vals)
   (newline)
   ;; return the last value
   (last vals))
