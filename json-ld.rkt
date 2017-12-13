@@ -52,11 +52,18 @@ with a #\\: in it."
 
 (define jsobj? hash-eq?)
 (define %nothing '(nothing))
-(define (jsobj-assoc obj key)
-  (let ([result (hash-ref obj key %nothing)])
+
+;;; Helpers for legacy code
+(define (hash-assoc key htbl)
+  (let ([result (hash-ref htbl key %nothing)])
     (if (eq? result %nothing)
         #f
-        (cons key result))))
+        (cons htbl result))))
+(define (hash-cons key val htbl)
+  (hash-set htbl key val))
+
+(define (jsobj-assoc obj key)
+  (hash-assoc obj key))
 (define jsobj-ref hash-ref)
 
 (define (blank-node? obj)
@@ -67,17 +74,17 @@ with a #\\: in it."
 (define (list-object? obj)
   "A list object is a JSON object that has a @list member"
   (and (jsobj? obj)
-       (jsobj-assoc obj "@list")))
+       (jsobj-assoc obj '@list)))
 
 (define (value-object? obj)
   "A value object is a JSON object that has a @value member"
   (and (jsobj? obj)
-       (jsobj-assoc obj "@value")))
+       (jsobj-assoc obj '@value)))
 
 (define (set-object? obj)
   "A set object is a JSON object that has a @set member"
   (and (jsobj? obj)
-       (jsobj-assoc obj "@set")))
+       (jsobj-assoc obj '@set)))
 
 (define (maybe-append-uri-to-base uri base)
   "A sorta-correct way to join a URI to BASE, assuming there is a BASE,
@@ -118,24 +125,22 @@ rathr than #t if true (#f of course if false)"
       (number? obj)
       (string? obj)))
 
-;; ... helper func
-;; (define (active-context-terms-assoc key active-context)
-;;   "Pull key out of a active-context's mapping"
-;;   (vhash-assoc key (active-context-terms active-context)))
+;; ... helper funcs
+(define (active-context-terms-assoc key active-context)
+  "Pull key out of a active-context's mapping"
+  (hash-ref (active-context-terms active-context) key))
 
-;; (define (active-context-terms-cons key val active-context)
-;;   "Assign key to value in a active-context's mapping and return new active-context"
-;;   (set-field
-;;    active-context
-;;    (active-context-terms)
-;;    (vhash-cons key val
-;;                (active-context-terms active-context))))
+(define (active-context-terms-cons key val active-context)
+  "Assign key to value in a active-context's mapping and return new active-context"
+  (copy-active-context
+   active-context
+   [terms (hash-ref (active-context-terms active-context)
+                    key val)]))
 
-;; (define (active-context-terms-delete key active-context)
-;;   (set-field
-;;    active-context
-;;    (active-context-terms)
-;;    (vhash-delete key (active-context-terms active-context))))
+(define (active-context-terms-delete key active-context)
+  (copy-active-context
+   active-context
+   [terms (hash-remove (active-context-terms active-context) key)]))
 
 
 
@@ -204,7 +209,7 @@ remaining context information to process from local-context"
             (let ((derefed-context (deref-context context))
                   (remote-contexts (cons context remote-contexts)))
               (when (not (and (jsobj? derefed-context)
-                              (jsobj-ref derefed-context "@context")))
+                              (jsobj-ref derefed-context '@context)))
                 (raise 'json-ld-error
                        "invalid remote context"
                        context))
@@ -220,7 +225,7 @@ remaining context information to process from local-context"
           ;; Time to process over a json object of data.  Yay!
           ;; We're really just folding over this object here,
           ;; but three keys are special:
-          ;; "@base", "@vocab", and "@language".
+          ;; '@base, '@vocab, and '@language.
           ;; Otherwise, we process using the "Create term definition"
           ;; algorithm.
           ;;
@@ -229,7 +234,7 @@ remaining context information to process from local-context"
           (define (modify-result-from-base result base)
             (if (and base
                      (eq? remote-contexts 'null))
-                ;; In this case we'll adjusting the result's "@base"
+                ;; In this case we'll adjusting the result's '@base
                 ;; depending on what this context's @base is
                 (match base
                   ;; If the @base in this context is null, remove
@@ -250,7 +255,7 @@ remaining context information to process from local-context"
                   ((? string? relative-base-uri)
                    ;; If the current *result's* base-uri is not null....
                    ;; resolve it against current base URI of result
-                   (if (string? (jsobj-ref result "@base"))
+                   (if (string? (jsobj-ref result '@base))
                        (copy-active-context result
                                             [base
                                              (maybe-append-uri-to-base
@@ -293,18 +298,18 @@ remaining context information to process from local-context"
 
           (define (build-result)
             (car
-             (jsobj-fold-unique
-              (lambda (ctx-key ctx-val prev)
+             (sequence-fold
+              (lambda (prev ctx-key ctx-val)
                 (match prev
                   ((cons result defined)
                    (match ctx-key
-                     ("@base"
+                     ('@base
                       (cons (modify-result-from-base result ctx-val)
                             defined))
-                     ("@vocab"
+                     ('@vocab
                       (cons (modify-result-from-vocab result ctx-val)
                             defined))
-                     ("@language"
+                     ('@language
                       (cons (modify-result-from-language result ctx-val)
                             defined))
                      (_
@@ -315,7 +320,7 @@ remaining context information to process from local-context"
                                     (create-term-definition
                                      result context ctx-key defined)])
                         (cons result defined)))))))
-              (cons result vlist-null) ;; second value here is "defined"
+              (cons result #hash()) ;; second value here is "defined"
               context)))
 
           (loop
@@ -340,7 +345,7 @@ remaining context information to process from local-context"
 (define (create-term-definition active-context local-context term defined)
   ;; Let's see, has this term been defined, or started to be
   ;; defined yet?...
-  (match (vhash-assoc term defined)
+  (match (hash-assoc term defined)
     ;; If term definition already was created, we do nothing
     ;; so return what we got!
     ((cons _ #t)
@@ -358,7 +363,7 @@ remaining context information to process from local-context"
      (let (;; Set defined's value for this key to false, indicating
            ;; that we started processing 
            (defined
-             (vhash-cons term #f defined))
+             (hash-cons term #f defined))
            ;; @@: Do we really need to remove any existing term
            ;; definition for term in active context?  The spec says so,
            ;; but might it just be overridden?
@@ -366,19 +371,19 @@ remaining context information to process from local-context"
             (active-context-terms-delete term active-context))
            (value (jsobj-ref local-context term)))
        (cond
-        ;; If value is null or a json object with "@id" mapping to null,
+        ;; If value is null or a json object with '@id mapping to null,
         ;; then mark term as defined and set term in
         ;; resulting context to null
         ((or (eq? value 'null)
              (and (jsobj? value)
-                  (eq? (jsobj-ref value "@id") 'null)))
+                  (eq? (jsobj-ref value '@id) 'null)))
          (values
           (active-context-terms-cons term 'null active-context)
-          (vhash-cons term #t defined)))
+          (hash-cons term #t defined)))
         ;; otherwise, possibly convert value and continue...
         (else
          (let* ((value (cond ((string? value)
-                              (jsobj-acons jsobj-nil "@id" value))
+                              (jsobj-acons jsobj-nil '@id value))
                              ((jsobj? value)
                               value)
                              (else
@@ -387,7 +392,7 @@ remaining context information to process from local-context"
            (call/ec
             (lambda (return)
               (define (definition-handle-type definition active-context defined)
-                (match (jsobj-assoc value "@type")
+                (match (jsobj-assoc value '@type)
                   ;; no match, return definition as-is
                   (#f (values definition active-context defined))
                   ;; type value must be a string
@@ -399,7 +404,7 @@ remaining context information to process from local-context"
                                                 #:local-context local-context
                                                 #:defined defined)])
                      (values
-                      (jsobj-acons definition "@type"
+                      (jsobj-acons definition '@type
                                    expanded-iri)
                       active-context defined)))
                   ;; Otherwise, it's an error!
@@ -409,12 +414,12 @@ remaining context information to process from local-context"
 
               ;; sec 11
               (define (definition-handle-reverse definition active-context defined)
-                (match (jsobj-assoc value "@reverse")
+                (match (jsobj-assoc value '@reverse)
                   ;; no match, carry on!
                   (#f (values definition active-context defined))
                   ;; value must be a string
                   ((cons _ (? string? reverse-prop))
-                   (when (jsobj-assoc value "@id")
+                   (when (jsobj-assoc value '@id)
                      (raise 'json-ld-error
                             "invalid reverse property"))
 
@@ -439,7 +444,7 @@ remaining context information to process from local-context"
                        (return
                         (active-context-terms-cons
                          term definition active-context)
-                        (vhash-cons term #t defined)))))
+                        (hash-cons term #t defined)))))
                   (_
                    (raise 'json-ld-error
                           "invalid IRI mapping"))))
@@ -447,13 +452,13 @@ remaining context information to process from local-context"
               ;; Helper method for 11
               (define (%definition-handle-container-reverse definition)
                 ;; 11.4
-                (match (jsobj-assoc value "@container")
+                (match (jsobj-assoc value '@container)
                   ;; just return original efinition if no @container
                   (#f definition)
                   ;; Otherwise make sure it's @set or @index or @nil
                   ;; and set @container to this
                   ((cons _ (? (cut member <> '("@set" "@index" 'null)) container))
-                   (jsobj-acons definition "@container" container))
+                   (jsobj-acons definition '@container container))
                   ;; Uhoh, looks like that wasn't valid...
                   (_
                    (raise 'json-ld-error
@@ -471,10 +476,10 @@ remaining context information to process from local-context"
                        definition active-context defined)
                 (cond
                  ;; sec 13
-                 ((and (jsobj-assoc value "@id")
-                       (not (equal? (jsobj-ref value "@id")
+                 ((and (jsobj-assoc value '@id)
+                       (not (equal? (jsobj-ref value '@id)
                                     term)))
-                  (let ((id-val (jsobj-ref value "@id")))
+                  (let ((id-val (jsobj-ref value '@id)))
                     (when (not (string? id-val))
                       (raise 'json-ld-error
                              "invalid IRI mapping"))
@@ -494,7 +499,7 @@ remaining context information to process from local-context"
                                " invalid keyword alias"))
 
                       ;; otherwise, onwards and upwards
-                      (values (jsobj-set definition "@id" expanded-iri)
+                      (values (jsobj-set definition '@id expanded-iri)
                               active-context defined))))
 
                  ;; sec 14
@@ -516,21 +521,21 @@ remaining context information to process from local-context"
                        (let ((prefix-in-context
                               (active-context-terms-assoc prefix active-context)))
                          (if prefix-in-context
-                             (values (jsobj-acons definition "@id"
+                             (values (jsobj-acons definition '@id
                                                   (string-append
-                                                   (jsobj-ref (cdr prefix-in-context) "@id")
+                                                   (jsobj-ref (cdr prefix-in-context) '@id)
                                                    (string-join suffix-list ":")))
                                      active-context defined)
                              ;; okay, yeah, it's set-iri-mapping-of-def-to-term
                              ;; but we want to return the new active-context
-                             (values (jsobj-acons definition "@id" term)
+                             (values (jsobj-acons definition '@id term)
                                      active-context defined)))))))
 
                  ;; sec 15
-                 ((jsobj-assoc active-context "@vocab")
-                  (values (jsobj-acons definition "@id"
+                 ((jsobj-assoc active-context '@vocab)
+                  (values (jsobj-acons definition '@id
                                        (string-append
-                                        (jsobj-ref active-context "@vocab")
+                                        (jsobj-ref active-context '@vocab)
                                         term))
                           active-context defined))
 
@@ -540,7 +545,7 @@ remaining context information to process from local-context"
 
               ;; 16
               (define (definition-handle-container definition active-context defined)
-                (let ((value-container (jsobj-assoc value "@container")))
+                (let ((value-container (jsobj-assoc value '@container)))
                   (if value-container
                       ;; Make sure container has an appropriate value,
                       ;; set it in the definition
@@ -549,14 +554,14 @@ remaining context information to process from local-context"
                                                        "@index" "@language")))
                           (raise 'json-ld-error
                                  "invalid container mapping"))
-                        (values (jsobj-acons definition "@container" container)
+                        (values (jsobj-acons definition '@container container)
                                 active-context defined))
                       ;; otherwise, no adjustment needed apparently
                       (values definition active-context defined))))
 
               ;; 17
               (define (definition-handle-language definition active-context defined)
-                (let ((value-language (jsobj-assoc value "@language")))
+                (let ((value-language (jsobj-assoc value '@language)))
                   (if value-language
                       ;; Make sure language has an appropriate value,
                       ;; set it in the definition
@@ -564,7 +569,7 @@ remaining context information to process from local-context"
                         (when (not (or (eq? language 'null) (string? language)))
                           (raise 'json-ld-error
                                  "invalid language mapping"))
-                        (values (jsobj-acons definition "@language" language)
+                        (values (jsobj-acons definition '@language language)
                                 active-context defined))
                       ;; otherwise, no adjustment needed apparently
                       (values definition active-context defined))))
@@ -580,7 +585,7 @@ remaining context information to process from local-context"
                                               definition-handle-language)
                              jsobj-nil active-context defined)])
                 (values (active-context-terms-cons term definition active-context)
-                        (vhash-cons term #t defined))))))))))))
+                        (hash-cons term #t defined))))))))))))
 
 ;; TODO: We have to redefine *ALL* entries that call iri-expansion
 ;;   to accept multiple value binding where the second value is defined
@@ -594,8 +599,8 @@ remaining context information to process from local-context"
                        #:vocab (vocab #f)
                        #:local-context (local-context 'null)
                        ;; @@: spec says defined should be null, but
-                       ;;   vlist-null seems to make more sense in our case
-                       #:defined (defined vlist-null))
+                       ;;   #hash() seems to make more sense in our case
+                       #:defined (defined #hash()))
   "IRI expansion on VALUE within ACTIVE-CONTEXT
 
 Does a multi-value-return of (expanded-iri active-context defined)"
@@ -622,7 +627,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ((and (eq? vocab #t)
                (active-context-terms-assoc value active-context))
           (values
-           (jsobj-ref (cdr (active-context-terms-assoc value active-context)) "@id")
+           (jsobj-ref (cdr (active-context-terms-assoc value active-context)) '@id)
            active-context
            defined))
          ;; 4
@@ -651,7 +656,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                     ((cons _ prefix-term-def)
                      (values
                       (string-concatenate
-                       (list (jsobj-ref prefix-term-def "@id") suffix))
+                       (list (jsobj-ref prefix-term-def '@id) suffix))
                       active-context
                       defined))
                     ;; otherwise, return the value; it's already an absolute IRI!
@@ -696,7 +701,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                              (and active-property-term-result
                                   (equal?
                                    (jsobj-ref (cdr active-property-term-result)
-                                              "@container")
+                                              '@container)
                                    "@list")))
                          (or (json-array? expanded-item)
                              (list-object? expanded-item)))
@@ -730,11 +735,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           (delay
             (when (force term-mapping)
               (jsobj-ref (cdr (force term-mapping))
-                         "@container")))))
+                         '@container)))))
     (define (get-expanded-value return)
       "Get expanded value; return is a prompt to bail out early"
       ;; 7.4.1, if key is @context, continue to next key
-      (when (equal? key "@context")
+      (when (equal? key '@context)
         (return result active-context))
       ;; otherwise, on to 7.4.3
       (let-values ([(expanded-property active-context defined)
@@ -760,7 +765,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               (lambda ()
                 (match expanded-property
                   ;; 7.4.3
-                  ("@id"
+                  ('@id
                    (when (not (string? value))
                      (raise 'json-ld-error
                             "invalid @id value"))
@@ -769,7 +774,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                    (iri-expansion active-context value
                                   #:document-relative #t))
                   ;; 7.4.4
-                  ("@type"
+                  ('@type
                    (match value
                      ((? string?)
                       (iri-expansion active-context value
@@ -790,15 +795,15 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      (_ (raise 'json-ld-error "invalid type value"))))
 
                   ;; 7.4.5
-                  ("@graph"
-                   (expand-element active-context "@graph" value))
+                  ('@graph
+                   (expand-element active-context '@graph value))
 
                   ;; 7.4.6
-                  ("@value"
+                  ('@value
                    (match value
                      ('null
                       ;; jump out of processing this pair
-                      (return (jsobj-set result "@value" 'null)
+                      (return (jsobj-set result '@value 'null)
                               active-context))
                      ;; otherwise, expanded value *is* value!
                      ((? scalar?)
@@ -806,23 +811,23 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      (_ (raise 'json-ld-error #:code "invalid value object"))))
 
                   ;; 7.4.7
-                  ("@language"
+                  ('@language
                    (match value
                      ((? string?)
                       (values (string-downcase value) active-context))
                      (_ (raise 'json-ld-error #:code "invalid language-tagged string"))))
 
                   ;; 7.4.8
-                  ("@index"
+                  ('@index
                    (match value
                      ((? string?)
                       (values value active-context))
                      (_ (raise 'json-ld-error #:code "invalid @index value"))))
 
                   ;; 7.4.9
-                  ("@list"
+                  ('@list
                    ;; Bail out early if null or @graph to remove free-floating list
-                   (when (member active-property '('null "@graph"))
+                   (when (member active-property '(null "@graph"))
                      (return result active-context))
                    (let-values ([(expanded-value active-context)
                                  (expand-element active-context active-property value)])
@@ -833,22 +838,22 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      (values expanded-value active-context)))
 
                   ;; 7.4.10
-                  ("@set"
+                  ('@set
                    (expand-element active-context active-property value))
 
                   ;; 7.4.11
                   ;; I'm so sorry this is so complicated
-                  ("@reverse"
+                  ('@reverse
                    (when (not (jsobj? value))
                      (raise 'json-ld-error "invalid @reverse value"))
 
                    (let-values ([(expanded-value active-context)
-                                 (expand-element active-context "@reverse" value)])
+                                 (expand-element active-context '@reverse value)])
                      (return
                       ;; here might be a great place to break out
                       ;; another function
                       (cond
-                       ((jsobj-assoc expanded-value "@reverse")
+                       ((jsobj-assoc expanded-value '@reverse)
                         (jsobj-fold-unique
                          (lambda (property item result)
                            (let ((property-in-result
@@ -859,22 +864,22 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                               (cons item (cdr property-in-result))
                                               (list item)))))
                          result
-                         (jsobj-ref expanded-value "@reverse")))
+                         (jsobj-ref expanded-value '@reverse)))
                        ((pair? expanded-value)
                         (jsobj-fold-unique
                          (lambda (property items result)
-                           (if (equal? property "@reverse")
+                           (if (equal? property '@reverse)
                                ;; skip this one
                                result
                                ;; otherwise, continue
                                (fold
                                 (lambda (item result)
-                                  (let ((reverse-map (jsobj-ref result "@reverse")))
+                                  (let ((reverse-map (jsobj-ref result '@reverse)))
                                     (when (or (value-object? item)
                                               (list-object? item))
                                       (raise 'json-ld-error
                                              "invalid reverse property value"))
-                                    (jsobj-set result "@reverse"
+                                    (jsobj-set result '@reverse
                                                (jsobj-set reverse-map key
                                                           (cons item
                                                                 ;; @@: this can be simplified
@@ -883,11 +888,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                                                     '()))))))
                                 result
                                 items)))
-                         (if (jsobj-assoc result "@reverse")
+                         (if (jsobj-assoc result '@reverse)
                              result
                              ;; TODO: fix this
                              ;; TODO: What were we fixing
-                             (jsobj-set result "@reverse" jsobj-nil))
+                             (jsobj-set result '@reverse jsobj-nil))
                          expanded-value))
                        (else result))
                       active-context)))))
@@ -904,7 +909,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;; 7.5
          ;; If key's container mapping in active-context is @language and
          ;; value is a jsobj then value is expanded from a language map
-         ((and (equal? (force container-mapping) "@language")
+         ((and (equal? (force container-mapping) '@language)
                (jsobj? value))
           (values
            (fold
@@ -917,8 +922,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                       (raise 'json-ld-error "invalid language map value"))
                     (cons
                      (alist->atlist
-                      `(("@value" . ,item)
-                        ("@language" . ,(string-downcase language))))
+                      `((@value . ,item)
+                        (@language . ,(string-downcase language))))
                      expanded-value))
                   expanded-value
                   (if (json-array? language-value)
@@ -933,7 +938,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
            active-context))
          
          ;; 7.6
-         ((and (equal? (force container-mapping) "@index")
+         ((and (equal? (force container-mapping) '@index)
                (jsobj? value))
           ;; @@: In reality the code here is very similar to 
           ;;   in 7.5, but I think this is much more readable...
@@ -953,9 +958,9 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                        (fold-right
                         (lambda (item expanded-value)
                           (cons
-                           (if (jsobj-assoc item "@index")
+                           (if (jsobj-assoc item '@index)
                                item
-                               (jsobj-set item "@index" index))
+                               (jsobj-set item '@index index))
                            expanded-value))
                         expanded-value
                         index-value)))))))
@@ -990,26 +995,28 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
          (cond
           ;; 7.9
-          ((and (equal? (force container-mapping) "@list")
+          ((and (equal? (force container-mapping) '@list)
                 (not (list-object? expanded-value)))
            (values
             (append-prop-val-to-result
              expanded-property
              (alist->atlist
-              `(("@list" . ,(if (json-array? expanded-value)
-                                expanded-value
-                                (list expanded-value)))))
+              `((@list . ,(if (json-array? expanded-value)
+                              expanded-value
+                              (list expanded-value)))))
              result)
             active-context))
 
           ;; 7.10
           ;; Looks like a reverse property?
           ((and (force term-mapping)
-                (jsobj-ref (cdr (force term-mapping)) "reverse"))
-           (let* ((result (if (jsobj-assoc result "@reverse")
+                ;; @@: This was just "reverse" earlier, I'm assuming this is
+                ;;   more correct...
+                (jsobj-ref (cdr (force term-mapping)) '@reverse))
+           (let* ((result (if (jsobj-assoc result '@reverse)
                               result
-                              (jsobj-acons result "@reverse" '())))
-                  (reverse-map (jsobj-ref result "@reverse"))
+                              (jsobj-acons result '@reverse '())))
+                  (reverse-map (jsobj-ref result '@reverse))
                   (expanded-value (if (json-array? expanded-value)
                                       expanded-value
                                       (list expanded-value))))
@@ -1020,7 +1027,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                  (when (or (value-object? item)
                            (list-object? item))
                    (raise 'json-ld-error "invalid reverse property value"))
-                 (jsobj-set result "@reverse"
+                 (jsobj-set result '@reverse
                             (jsobj-set reverse-map expanded-property
                                        (cons item
                                              (if (jsobj-assoc reverse-map expanded-property)
@@ -1052,12 +1059,12 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                        (expand-json-object-pair key val result active-context active-property)])
            (loop rest active-context result))))))
 
-  (let* ((jsobj-context (jsobj-assoc jsobj "@context"))
+  (let* ((jsobj-context (jsobj-assoc jsobj '@context))
          (active-context
           (if jsobj-context
               (process-context active-context (cdr jsobj-context))
               active-context))
-         (permitted-value-results '("@value" "@language" "@type" "@index")))
+         (permitted-value-results '(@value @language @type @index)))
     (let-values ([(result active-context)
                   (build-result active-context)])
       (call/ec
@@ -1065,7 +1072,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          (define (adjust-result-1 result)
            (cond
             ;; sec 8
-            ((jsobj-assoc result "@value")
+            ((jsobj-assoc result '@value)
              ;; 8.1, make sure result does not contain keys outside
              ;;   of permitted set
              (when (or (not (match (jsobj->alist result)
@@ -1075,41 +1082,41 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                      ...)
                                #t)
                               (_ #f)))
-                       (and (jsobj-assoc result "@language")
-                            (jsobj-assoc result "@type")))
+                       (and (jsobj-assoc result '@language)
+                            (jsobj-assoc result '@type)))
                (raise 'json-ld-error "invalid value object"))
 
-             (let ((result-value (jsobj-ref result "@value")))
+             (let ((result-value (jsobj-ref result '@value)))
                (cond ((eq? result-value 'null)
                       (return 'null active-context))
                      ((and (not (string? result-value))
-                           (jsobj-assoc result "@language"))
+                           (jsobj-assoc result '@language))
                       (raise 'json-ld-error "invalid typed value"))
-                     ((and (jsobj-assoc result "@type")
-                           (not (absolute-uri? (jsobj-ref result "@type"))))
+                     ((and (jsobj-assoc result '@type)
+                           (not (absolute-uri? (jsobj-ref result '@type))))
                       (raise 'json-ld-error "invalid typed value"))
                      (else result))))
             ;; sec 9
             ;; @@: unnecessarily pulling type out of result several times,
             ;;   we could do it just once... maybe with a (delay) at top
             ;;   of cond?
-            ((and (jsobj-assoc result "@type")
-                  (json-array? (jsobj-ref result "@type")))
-             (jsobj-set result "@type" (jsobj-ref result "@type")))
+            ((and (jsobj-assoc result '@type)
+                  (json-array? (jsobj-ref result '@type)))
+             (jsobj-set result '@type (jsobj-ref result '@type)))
 
             ;; sec 10
-            ((or (jsobj-assoc result "@set")
-                 (jsobj-assoc result "@list"))
+            ((or (jsobj-assoc result '@set)
+                 (jsobj-assoc result '@list))
              ;; @@: Hacky
              (let* ((num-members (jsobj-length result)))
                ;; 10.1
                (when (not (or (eqv? num-members 1)
-                              (and (jsobj-assoc result "@index")
+                              (and (jsobj-assoc result '@index)
                                    (eqv? num-members 2))))
                  (raise 'json-ld-error "invalid set or list object"))
 
                ;; 10.2
-               (let ((set-mapping (jsobj-assoc result "@set")))
+               (let ((set-mapping (jsobj-assoc result '@set)))
                  (if set-mapping
                      (cdr set-mapping)
                      result))))
@@ -1117,7 +1124,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
          ;; sec 11
          (define (adjust-result-2 result)
-           (if (and (jsobj-assoc result "@language")
+           (if (and (jsobj-assoc result '@language)
                     (eqv? (jsobj-length result) 1))
                (return 'null active-context)
                result))
@@ -1125,16 +1132,16 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;; sec 12
          (define (adjust-result-3 result)
            ;; Graph adjustments...
-           (if (member active-property '('null "@graph"))
+           (if (member active-property '(null "@graph"))
                ;; drop free-floating values
                (cond ((or (eqv? (jsobj-length result) 0)
-                          (jsobj-assoc result "@value")
-                          (jsobj-assoc result "@list"))
+                          (jsobj-assoc result '@value)
+                          (jsobj-assoc result '@list))
                       (return 'null active-context))
                      ;; @@: Do we need to check jsobj? at this point?
                      ;;   I think the only other thing result becomes is 'null
                      ;;   and we return it explicitly in such a case
-                     ((and (jsobj-assoc result "@id")
+                     ((and (jsobj-assoc result '@id)
                            (eqv? 1 (jsobj-length result)))
                       (return 'null active-context))
 
@@ -1153,7 +1160,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     ('null
      (values 'null active-context))
     ((? scalar? _)
-     (if (member active-property '('null "@graph"))
+     (if (member active-property '(null "@graph"))
          (values 'null active-context)
          ;; Note that value-expansion should also do a multi-value return
          ;; with active-context... in theory...
@@ -1172,8 +1179,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     (define (final-adjustments expanded-result)
       (cond ((and (jsobj? expanded-result)
                  (eqv? 1 (jsobj-length expanded-result))
-                 (jsobj-assoc expanded-result "@graph"))
-            (jsobj-ref expanded-result "@graph"))
+                 (jsobj-assoc expanded-result '@graph))
+            (jsobj-ref expanded-result '@graph))
            ((eq? expanded-result 'null)
             '())
            (else expanded-result)))
@@ -1195,25 +1202,25 @@ Does a multi-value-return of (expanded-iri active-context defined)"
      (let* ((term-mapping (active-context-terms-assoc active-property active-context))
             (type-mapping
              (if term-mapping
-                 (jsobj-assoc (cdr term-mapping) "@type")
+                 (jsobj-assoc (cdr term-mapping) '@type)
                  #f)))
        (define (id-or-vocab-return expansion-thunk)
          (let-values ([(result active-context)
                        (expansion-thunk)])
            (return
             (alist->atlist
-             `(("@id" . ,result)))
+             `((@id . ,result)))
             active-context)))
 
        ;; sec 1
-       (when (and type-mapping (eq? (cdr type-mapping) "@id"))
+       (when (and type-mapping (eq? (cdr type-mapping) '@id))
          (id-or-vocab-return
           (lambda ()
             (iri-expansion active-context value
                            #:document-relative #t))))
 
        ;; sec 2
-       (when (and type-mapping (eq? (cdr type-mapping) "@vocab"))
+       (when (and type-mapping (eq? (cdr type-mapping) '@vocab))
          (id-or-vocab-return
           (lambda ()
             (iri-expansion active-context value
@@ -1221,18 +1228,18 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                            #:document-relative #t))))
 
        ;; sec 3
-       (let ((result (alist->atlist `(("@value" . ,value)))))
+       (let ((result (alist->atlist `((@value . ,value)))))
          (cond
           ;; sec 4
           (type-mapping
            (values
-            (jsobj-set result "@type" (cdr type-mapping))
+            (jsobj-set result '@type (cdr type-mapping))
             active-context))
           ;; sec 5
           ((string? value)
            (let ((language-mapping
                   (if term-mapping
-                      (jsobj-assoc (cdr term-mapping) "@language")
+                      (jsobj-assoc (cdr term-mapping) '@language)
                       #f)))
              (match language-mapping
                ;; if no mapping, or the mapping value is nil,
@@ -1242,13 +1249,13 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                ;; Otherwise if there's a match add @language to result
                ((cons _ language)
                 (values
-                 (jsobj-set result "@language" language)
+                 (jsobj-set result '@language language)
                  active-context))
                ;; otherwise...
                (_
                 (let ((default-language (active-context-language active-context)))
                   (if (defined? default-language)
-                      (values (jsobj-set result "@language" default-language)
+                      (values (jsobj-set result '@language default-language)
                               active-context)
                       (values result active-context)))))))
           (else (values result active-context))))))))
