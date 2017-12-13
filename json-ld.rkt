@@ -191,6 +191,41 @@ rathr than #t if true (#f of course if false)"
          (reverse (list func1 func2 ...))))
 
 
+;;; ==== Some crufty utilities ====
+
+(define (symbol>? sym1 sym2)
+  (not (or (eq? sym1 sym2)
+           (symbol<? sym1 sym2))))
+
+(define (jsobj->sorted-unique-alist jsobj [compare symbol<?])
+  "Return a unique and sorted alist
+
+Protip: change compare to symbol>? if you want to
+fold instead of fold-right >:)"
+  (map (lambda (k)
+         (cons k (hash-ref jsobj k)))
+       (sort (hash-keys jsobj) compare)))
+
+;; for debugging
+(define (pk . vals)
+  "Peek at values for print debugging, but return 'em"
+  (display ";;; ")
+  (display vals)
+  (newline)
+  ;; return the last value
+  (last vals))
+
+(define-syntax-rule (pk-values print-these ... body)
+  ;; Like pk, but supporting multiple value return
+  (call-with-values
+      (lambda () body)
+    (lambda vals
+      (pk print-these ... '*pk-values:* vals)
+      (apply values vals))))
+
+;;; =============
+
+
 
 ;; Algorithm 6.1
 
@@ -980,7 +1015,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
             ;; As a hack, this is sorted in REVERSE!
             ;; This way we can use normal foldl instead of foldr.
             ;; Mwahahaha!
-            (jsobj->sorted-unique-alist value string>?))
+            (jsobj->sorted-unique-alist value symbol>?))
            expanded-property
            active-context))
          
@@ -989,7 +1024,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                (jsobj? value))
           ;; @@: In reality the code here is very similar to 
           ;;   in 7.5, but I think this is much more readable...
-          (let loop ((l (jsobj->sorted-unique-alist value string>?))
+          (let loop ((l (jsobj->sorted-unique-alist value symbol>?))
                      (active-context active-context)
                      (expanded-value '()))
             (match l
@@ -1092,7 +1127,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     ;; Thaere's a (admittedly unlikely?) chance that builing up the
     ;; active-context this way could result in things being wrong?
     ;; we're consing in the other direction, so...
-    (let loop ((l (jsobj->sorted-unique-alist jsobj string>?))
+    (let loop ((l (jsobj->sorted-unique-alist jsobj symbol>?))
                (active-context active-context)
                (result #hasheq()))
       (match l
@@ -1119,7 +1154,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
             ((jsobj-assoc result '@value)
              ;; 8.1, make sure result does not contain keys outside
              ;;   of permitted set
-             (when (or (not (match (jsobj->alist result)
+             (when (or (not (match (hash->list result)
                               ((list (cons (? (lambda (x)
                                                 (member x permitted-value-results))
                                               key)
@@ -1153,7 +1188,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
             ((or (jsobj-assoc result '@set)
                  (jsobj-assoc result '@list))
              ;; @@: Hacky
-             (let* ((num-members (jsobj-length result)))
+             (let* ((num-members (hash-count result)))
                ;; 10.1
                (when (not (or (eqv? num-members 1)
                               (and (jsobj-assoc result '@index)
@@ -1170,7 +1205,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;; sec 11
          (define (adjust-result-2 result)
            (if (and (jsobj-assoc result '@language)
-                    (eqv? (jsobj-length result) 1))
+                    (eqv? (hash-count result) 1))
                (return 'null active-context)
                result))
 
@@ -1179,7 +1214,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
            ;; Graph adjustments...
            (if (member active-property '(null "@graph"))
                ;; drop free-floating values
-               (cond ((or (eqv? (jsobj-length result) 0)
+               (cond ((or (eqv? (hash-count result) 0)
                           (jsobj-assoc result '@value)
                           (jsobj-assoc result '@list))
                       (return 'null active-context))
@@ -1187,7 +1222,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      ;;   I think the only other thing result becomes is 'null
                      ;;   and we return it explicitly in such a case
                      ((and (jsobj-assoc result '@id)
-                           (eqv? 1 (jsobj-length result)))
+                           (eqv? 1 (hash-count result)))
                       (return 'null active-context))
 
                      (else result))
@@ -1223,7 +1258,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     ;; final other than arrayify that is!
     (define (final-adjustments expanded-result)
       (cond ((and (jsobj? expanded-result)
-                  (eqv? 1 (jsobj-length expanded-result))
+                  (eqv? 1 (hash-count expanded-result))
                   (jsobj-assoc expanded-result '@graph))
              (jsobj-ref expanded-result '@graph))
             ((eq? expanded-result 'null)
