@@ -153,7 +153,7 @@ TODO: It loooks like the correct version of this is done in jsonld.py
 
 As a mild speed optimization, returns the remainder of json-ld-keywords
 rathr than #t if true (#f of course if false)"
-  (member obj json-ld-keywords))
+  (member (maybe-symbolify obj) json-ld-keywords))
 
 (define (scalar? obj)
   (or (eq? obj #t)
@@ -625,7 +625,7 @@ remaining context information to process from local-context"
                                                  #:vocab #t #:document-relative #f
                                                  #:local-context local-context
                                                  #:defined defined)])
-                      (when (not (or (keyword? expanded-iri)
+                      (when (not (or (json-ld-keyword? expanded-iri)
                                      (absolute-uri? expanded-iri)
                                      (blank-node? expanded-iri)))
                         (error 'json-ld-error
