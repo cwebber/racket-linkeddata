@@ -37,11 +37,27 @@
 (define initial-active-context
   (active-context 'null #hasheq() 'null undefined undefined))
 
+(define *context-cache*
+  (box #hash()))
+(define (context-cache-ref url)
+  (hash-ref (unbox *context-cache*) url #f))
+(define (context-cache-set! url val)
+  (set-box! *context-cache*
+            (hash-set (unbox *context-cache*) url val)))
+
+(define-syntax-rule (get-or-cache-context url body ...)
+  (or (context-cache-ref url)
+      (let ([result (begin body ...)])
+        (context-cache-set! url result)
+        result)))
+
 (define (basic-deref-remote-context iri)
-  (string->jsexpr
-   (call/input-url iri (curry get-pure-port #:redirections 5)
-                   port->string
-                   '("Accept: application/ld+json"))))
+  (get-or-cache-context
+   iri
+   (string->jsexpr
+    (call/input-url iri (curry get-pure-port #:redirections 5)
+                    port->string
+                    '("Accept: application/ld+json")))))
 
 (define *context-loader*
   (make-parameter basic-deref-remote-context))
