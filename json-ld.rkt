@@ -130,22 +130,26 @@ rathr than #t if true (#f of course if false)"
 ;; ... helper funcs
 (define (active-context-terms-assoc key active-context)
   "Pull key out of a active-context's mapping"
-  (let ([result (hash-ref (active-context-terms active-context) key %nothing)])
+  (let* ([key (maybe-symbolify key)]
+         [result (hash-ref (active-context-terms active-context)
+                           key %nothing)])
     (if (eq? result %nothing)
         #f
         (cons key result))))
 
 (define (active-context-terms-cons key val active-context)
   "Assign key to value in a active-context's mapping and return new active-context"
-  (copy-active-context
-   active-context
-   [terms (hash-set (active-context-terms active-context)
-                    key val)]))
+  (let ([key (maybe-symbolify key)])
+    (copy-active-context
+     active-context
+     [terms (hash-set (active-context-terms active-context)
+                      key val)])))
 
 (define (active-context-terms-delete key active-context)
-  (copy-active-context
-   active-context
-   [terms (hash-remove (active-context-terms active-context) key)]))
+  (let ([key (maybe-symbolify key)])
+    (copy-active-context
+     active-context
+     [terms (hash-remove (active-context-terms active-context) key)])))
 
 
 ;; @@: We may not need these two next macros...
