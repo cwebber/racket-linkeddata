@@ -1,6 +1,7 @@
 #lang racket
 
-(require json)
+(require json
+         net/url)
 
 ;; Special meaning in <active-context>
 (define undefined 'undefined)
@@ -37,7 +38,24 @@
   (active-context 'null #hasheq() 'null undefined undefined))
 
 (define (basic-deref-remote-context iri)
-  (error 'json-ld-error "remote resolver not implemented yet :)"))
+  (string->jsexpr
+   (call/input-url iri (curry get-pure-port #:redirections 5)
+                   port->string
+                   '("Accept: application/ld+json"))))
+
+(define *context-loader*
+  (make-parameter basic-deref-remote-context))
+
+(define (load-context iri)
+  ;; TODO: Eventually we'll need to support more than just http URIs..
+  (let ([iri
+         (match iri
+           ((? symbol?)
+            (string->url (symbol->string iri)))
+           ((? string?)
+            (string->url iri))
+           ((? url?) iri))])
+    ((*context-loader*) iri)))
 
 (define (absolute-uri? obj)
   "Check if OBJ is an absolute uri or not."
@@ -251,7 +269,6 @@ fold instead of fold-right >:)"
 ;; Algorithm 6.1
 
 (define (process-context active-context local-context [remote-contexts '()]
-                         #:deref-context [deref-context basic-deref-remote-context]
                          #:base-iri [base-iri 'null])
   "This function builds up a new active-context based on the
 remaining context information to process from local-context"
@@ -311,19 +328,17 @@ remaining context information to process from local-context"
               (error 'json-ld-error
                      "recursive context inclusion"
                      context))
-            (let ((derefed-context (deref-context context))
+            (let ((derefed-context (load-context context))
                   (remote-contexts (cons context remote-contexts)))
               (when (not (and (jsobj? derefed-context)
                               (jsobj-ref derefed-context '@context)))
                 (error 'json-ld-error
-                       "invalid remote context"
-                       context))
+                       "invalid remote context"))
               ;; We made it this far, so recurse on the derefed context
               ;; then continue with that updated result
               (let* ((context derefed-context)
                      (result (process-context result context
-                                              remote-contexts
-                                              #:deref-context deref-context)))
+                                              remote-contexts)))
                 (loop result next-contexts remote-contexts)))))
 
          ((? jsobj? context)
