@@ -59,7 +59,7 @@
   (let ([result (hash-ref htbl key %nothing)])
     (if (eq? result %nothing)
         #f
-        (cons htbl result))))
+        (cons key result))))
 (define (hash-cons key val htbl)
   (hash-set htbl key val))
 
@@ -130,7 +130,10 @@ rathr than #t if true (#f of course if false)"
 ;; ... helper funcs
 (define (active-context-terms-assoc key active-context)
   "Pull key out of a active-context's mapping"
-  (hash-ref (active-context-terms active-context) key #f))
+  (let ([result (hash-ref (active-context-terms active-context) key %nothing)])
+    (if (eq? result %nothing)
+        #f
+        (cons key result))))
 
 (define (active-context-terms-cons key val active-context)
   "Assign key to value in a active-context's mapping and return new active-context"
@@ -208,6 +211,18 @@ fold instead of fold-right >:)"
          (cons k (hash-ref jsobj k)))
        (sort (hash-keys jsobj) compare)))
 
+(define (maybe-stringify obj)
+  "Symbols or strings as strings"
+  (match obj
+    ((? symbol?) (symbol->string obj))
+    (_ obj)))
+
+(define (maybe-symbolify obj)
+  "Symbols or strings as symbols"
+  (match obj
+    ((? string?) (string->symbol obj))
+    (_ obj)))
+
 ;; for debugging
 (define (pk . vals)
   "Peek at values for print debugging, but return 'em"
@@ -242,7 +257,8 @@ remaining context information to process from local-context"
              ;;    containing only local context.
              [local-context (match local-context
                               ((? pair?) local-context)
-                              (_ (list local-context)))])
+                              (_ (list local-context)))]
+             [remote-contexts remote-contexts])
     ;; Some helper functions...
     ;; (the variables these reference get overriden
     ;; with let later, but we only use this early on)
@@ -454,7 +470,7 @@ remaining context information to process from local-context"
            ;; but might it just be overridden?
            (active-context
             (active-context-terms-delete term active-context))
-           (value (jsobj-ref local-context term)))
+           (value (jsobj-ref local-context (maybe-symbolify term))))
        (cond
         ;; If value is null or a json object with '@id mapping to null,
         ;; then mark term as defined and set term in
@@ -717,7 +733,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
            defined))
          ;; 4
          ((absolute-uri? value)
-          (let* ((split-string (string-split value ":"))
+          (let* ((split-string (string-split (maybe-stringify value) ":"))
                  (prefix (car split-string))
                  (suffix (string-join (cdr split-string) ":")))
             (if (or (equal? prefix "_")
