@@ -352,7 +352,7 @@ remaining context information to process from local-context"
                        "invalid remote context"))
               ;; We made it this far, so recurse on the derefed context
               ;; then continue with that updated result
-              (let* ((context derefed-context)
+              (let* ((context (jsobj-ref derefed-context '@context))
                      (result (process-context result context
                                               remote-contexts)))
                 (loop result next-contexts remote-contexts)))))
