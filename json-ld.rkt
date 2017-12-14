@@ -1081,7 +1081,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      (get-expanded-value return)])
          (define (append-prop-val-to-result expanded-property expanded-value
                                             result)
-           (hash-set result expanded-property
+           (hash-set result (maybe-symbolify expanded-property)
                      (cons expanded-value
                            (if (jsobj-assoc result expanded-property)
                                (jsobj-ref result expanded-property)
