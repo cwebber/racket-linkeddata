@@ -602,7 +602,7 @@ remaining context information to process from local-context"
 
               ;; 12
               (define (definition-set-reverse-to-false definition active-context defined)
-                (values (hash-set definition "reverse" #f) active-context defined))
+                (values (hash-set definition 'reverse #f) active-context defined))
 
               ;; This one is an adjustment deluxe, it does a significant
               ;; amount of adjustments to the definition and builds
