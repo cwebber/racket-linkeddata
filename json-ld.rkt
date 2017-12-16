@@ -1431,7 +1431,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
 ;;; Algorithm 8.1
 (define (compact-element active-context inverse-context active-property
-                         element compact-arrays)
+                         element [compact-arrays #t])
   (define flatten-append
     (lambda (obj1 obj2)
       (if (pair? obj2)
@@ -1711,19 +1711,25 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           '#hasheq()  ; sec 6
           element)))))))
 
-(define (compact jsobj [compact-arrays #t])
-  (let* ([jsobj-context (jsobj-assoc jsobj '@context)]
-         [active-context
-          (if jsobj-context
-              (process-context active-context (cdr jsobj-context))
-              active-context)]
+(define (compact jsobj context #:compact-arrays [compact-arrays #t])
+  (let* ([active-context
+          (process-context active-context context)]
          [inverse-context
           (create-inverse-context active-context)]
          [active-property 'null]
-         [element (expand jsobj)])
-    (compact-element active-context inverse-context
-                     active-property element
-                     compact-arrays)))
+         [element (expand jsobj)]
+         [result
+          (match (compact-element active-context inverse-context
+                                  active-property element
+                                  compact-arrays)
+            ;; compaction algorithm epilogue
+            ((? pair? result)
+             `#hasheq((,(iri-compaction active-context inverse-context '@graph)
+                       . ,result)))
+            (result result))])
+    (if (not (hash-empty? context))
+        (hash-set result '@context context)
+        result)))
 
 (define (compact-value . args)
   'TODO)
