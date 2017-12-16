@@ -1713,7 +1713,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
 (define (compact jsobj context #:compact-arrays [compact-arrays #t])
   (let* ([active-context
-          (process-context active-context context)]
+          (process-context initial-active-context context)]
          [inverse-context
           (create-inverse-context active-context)]
          [active-property 'null]
