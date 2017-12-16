@@ -316,6 +316,21 @@ fold instead of fold-right >:)"
       (pk print-these ... '*pk-values:* vals)
       (apply values vals))))
 
+(define (listy? obj)
+  "Fast close-enough check to see if something's list-like"
+  (or (pair? obj)
+      (null? obj)))
+
+(define flatten-append
+  (lambda (obj1 obj2)
+    (if (listy? obj2)
+        (if (listy? obj1)
+            (append obj1 obj2)
+            (cons obj1 obj2))
+        (if (listy? obj1)
+            (append obj1 (list obj2))
+            (cons obj1 (list obj2))))))
+
 ;;; =============
 
 
@@ -331,7 +346,7 @@ remaining context information to process from local-context"
              ;; 2. If local context is not an array, set it to an array
              ;;    containing only local context.
              [local-context (match local-context
-                              ((? pair?) local-context)
+                              ((? listy?) local-context)
                               (_ (list local-context)))]
              [remote-contexts remote-contexts])
     ;; Some helper functions...
@@ -872,14 +887,14 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                    (jsobj-ref (cdr active-property-term-result)
                                               '@container)
                                    "@list")))
-                         (or (pair? expanded-item)
+                         (or (listy? expanded-item)
                              (list-object? expanded-item)))
                 (error 'json-error
                        "list of lists"))
 
               ;; TODO: this seems super wrong
               (match expanded-item
-                ((? pair? _)
+                ((? listy? _)
                  (cons (append expanded-item result)
                        active-context))
                 ;; TODO: Is this right?  Shouldn't we just skip if null?
@@ -1034,7 +1049,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                            (list item)))))
                          result
                          (jsobj-ref expanded-value '@reverse)))
-                       ((pair? expanded-value)
+                       ((listy? expanded-value)
                         (sequence-fold
                          (lambda (result property items)
                            (if (equal? property '@reverse)
@@ -1094,7 +1109,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                               (@language . ,(string-downcase language)))
                      expanded-value))
                   expanded-value
-                  (if (pair? language-value)
+                  (if (listy? language-value)
                       language-value
                       (list language-value))))))
             '()
@@ -1119,7 +1134,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               ((list (cons index index-value) rest ...)
                (let-values ([(index-value active-context)
                              (expand-element active-context key
-                                             (if (pair? index-value)
+                                             (if (listy? index-value)
                                                  index-value
                                                  (list index-value)))])
                  (loop rest active-context
@@ -1146,10 +1161,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          (define (append-prop-val-to-result expanded-property expanded-value
                                             result)
            (hash-set result (maybe-symbolify expanded-property)
-                     (cons expanded-value
-                           (if (jsobj-assoc result expanded-property)
-                               (jsobj-ref result expanded-property)
-                               '()))))
+                     (flatten-append
+                      expanded-value
+                      (if (jsobj-assoc result expanded-property)
+                          (jsobj-ref result expanded-property)
+                          '()))))
 
          ;; 7.8
          ;; if expanded value is null, ignore key by continuing
@@ -1168,7 +1184,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
            (values
             (append-prop-val-to-result
              expanded-property
-             `#hasheq((@list . ,(if (pair? expanded-value)
+             `#hasheq((@list . ,(if (listy? expanded-value)
                                     expanded-value
                                     (list expanded-value))))
              result)
@@ -1182,7 +1198,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                               result
                               (hash-set result '@reverse '())))
                   (reverse-map (jsobj-ref result '@reverse))
-                  (expanded-value (if (pair? expanded-value)
+                  (expanded-value (if (listy? expanded-value)
                                       expanded-value
                                       (list expanded-value))))
              
@@ -1267,7 +1283,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
             ;;   we could do it just once... maybe with a (delay) at top
             ;;   of cond?
             ((and (jsobj-assoc result '@type)
-                  (pair? (jsobj-ref result '@type)))
+                  (listy? (jsobj-ref result '@type)))
              (hash-set result '@type (jsobj-ref result '@type)))
 
             ;; sec 10
@@ -1331,7 +1347,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;; Note that value-expansion should also do a multi-value return
          ;; with active-context... in theory...
          (value-expansion active-context active-property element)))
-    ((? pair? _)
+    ((? listy? _)
      ;; Does a multi-value return with active context
      (expand-json-array active-context active-property element))
     ((? jsobj? _)
@@ -1351,7 +1367,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              '())
             (else expanded-result)))
     (define (arrayify expanded-result)
-      (if (pair? expanded-result)
+      (if (listy? expanded-result)
           expanded-result
           (list expanded-result)))
     (let ([final-result ((compose-forward final-adjustments arrayify)
@@ -1432,15 +1448,6 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 ;;; Algorithm 8.1
 (define (compact-element active-context inverse-context active-property
                          element [compact-arrays #t])
-  (define flatten-append
-    (lambda (obj1 obj2)
-      (if (pair? obj2)
-          (if (pair? obj1)
-              (append obj1 obj2)
-              (cons obj1 obj2))
-          (if (pair? obj1)
-              (append obj1 (list obj2))
-              (cons obj1 (list obj2))))))
   (match element
     ;; sec 1
     ;; If the element is a scalar, it is already in its most compact form
@@ -1532,7 +1539,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                                   active-context)
                                                  '@set)
                                             (not compact-arrays))
-                                        (not (pair? value)))
+                                        (not (listy? value)))
                                    (list value)
                                    value)])
                          (if (not (hash-has-key? (unbox boxed-result) property))
@@ -1623,10 +1630,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                               expanded-item))]
                         ;; 7.6.4
                         [compacted-item
-                         (if (pair? expanded-item)
+                         (if (listy? expanded-item)
                              (let* (;; 7.6.4.1
                                     [compacted-item
-                                     (if (pair? compacted-item)
+                                     (if (listy? compacted-item)
                                          compacted-item
                                          (list compacted-item))])
                                ;; 7.6.4.2
@@ -1689,14 +1696,14 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                               (if (and (or (not compact-arrays)
                                            (member container '(@set @list))
                                            (member expanded-property '(@list @graph)))
-                                       (not (pair? compacted-item)))
+                                       (not (listy? compacted-item)))
                                   (list compacted-item)
                                   compacted-item)])
                          (if (not (hash-has-key? result item-active-property))
                              (hash-set result item-active-property compacted-item)
                              (let ([cur-val
                                     (match (hash-ref result item-active-property)
-                                      ((? pair? cur-val)
+                                      ((? listy? cur-val)
                                        cur-val)
                                       (cur-val (list cur-val)))])
                                (hash-set result
@@ -1723,7 +1730,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                   active-property element
                                   compact-arrays)
             ;; compaction algorithm epilogue
-            ((? pair? result)
+            ((? listy? result)
              `#hasheq((,(iri-compaction active-context inverse-context '@graph)
                        . ,result)))
             (result result))])
