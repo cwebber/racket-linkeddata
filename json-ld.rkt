@@ -29,7 +29,9 @@
    language
    ;; Vocabulary mapping
    ;;   equiv to "@vocab" in json-ld.py
-   vocab))
+   vocab)
+  ;; @@: Maybe remove this later
+  #:transparent)
 
 (define-syntax-rule (copy-active-context acontext flds ...)
   (struct-copy active-context acontext flds ...))
@@ -87,6 +89,8 @@
 
 (define jsobj? (lambda (x) (and (hash? x) (hash-eq? x))))
 (define %nothing '(nothing))
+(define (nothing? obj)
+  (eq? obj %nothing))
 
 ;;; Helpers for legacy code
 (define (hash-assoc key htbl)
@@ -171,6 +175,15 @@ rathr than #t if true (#f of course if false)"
         #f
         (cons key result))))
 
+(define (active-context-terms-ref key active-context)
+  "Pull key out of a active-context's mapping"
+  (let* ([key (maybe-symbolify key)]
+         [result (hash-ref (active-context-terms active-context)
+                           key %nothing)])
+    (if (eq? result %nothing)
+        #f
+        result)))
+
 (define (active-context-terms-cons key val active-context)
   "Assign key to value in a active-context's mapping and return new active-context"
   (let ([key (maybe-symbolify key)])
@@ -185,6 +198,15 @@ rathr than #t if true (#f of course if false)"
      active-context
      [terms (hash-remove (active-context-terms active-context) key)])))
 
+(define (active-context-container-mapping key active-context)
+  (let* ([term-def (active-context-terms-ref key active-context)])
+    (and term-def
+         (hash-ref term-def '@container #f))))
+
+(define (active-context-reverse-property? key active-context)
+  (let* ([term-def (active-context-terms-ref key active-context)])
+    (and term-def
+         (hash-ref term-def '@reverse #f))))
 
 ;; @@: We may not need these two next macros...
 ;;  remove soon if not used
@@ -466,13 +488,7 @@ remaining context information to process from local-context"
          ;; 3.3: Anything else at this point is an error...
          (_ (error 'json-ld-error
                    "invalid local context"
-                   context))))
-      ;; ;; This means that this context isn't wrapped in a list;
-      ;; ;; we should process it, but set next-contexts to an empty list
-      ;; (_
-      ;;  (process-this-context
-      ;;   local-context '()))
-      )))
+                   context)))))))
 
 
 ;; Algorithm 6.2
@@ -630,7 +646,7 @@ remaining context information to process from local-context"
                                      (blank-node? expanded-iri)))
                         (error 'json-ld-error
                                "invalid IRI mapping"))
-                      (when (equal? expanded-iri "@context")
+                      (when (equal? (maybe-stringify expanded-iri) "@context")
                         (error 'json-ld-error
                                " invalid keyword alias"))
 
@@ -686,8 +702,9 @@ remaining context information to process from local-context"
                       ;; Make sure container has an appropriate value,
                       ;; set it in the definition
                       (let ((container (cdr value-container)))
-                        (when (not (member container '("@list" "@set"
-                                                       "@index" "@language")))
+                        (when (not (member (maybe-stringify container)
+                                           '("@list" "@set"
+                                             "@index" "@language")))
                           (error 'json-ld-error
                                  "invalid container mapping"))
                         (values (hash-set definition '@container container)
@@ -833,7 +850,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                    (active-context-terms-assoc active-property active-context)))
               ;; Boo, it's sad that json-ld prevents lists of lists.
               ;; ... but we're doing as the spec says :\
-              (when (and (or (equal? active-property "@list")
+              (when (and (or (equal? (maybe-symbolify active-property) '@list)
                              (and active-property-term-result
                                   (equal?
                                    (jsobj-ref (cdr active-property-term-result)
@@ -889,7 +906,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           (return result active-context))
          ;; 7.4... get ready for a doosy
          ((json-ld-keyword? expanded-property)
-          (when (equal? active-property "@reverse")
+          (when (eq? (maybe-symbolify active-property) '@reverse)
             (error 'json-ld-error
                    "invalid reverse property map"))
           ;; already defined, uhoh
@@ -899,7 +916,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
           (call-with-values
               (lambda ()
-                (match expanded-property
+                (match (maybe-symbolify expanded-property)
                   ;; 7.4.3
                   ('@id
                    (when (not (string? value))
@@ -1304,7 +1321,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     ((? jsobj? _)
      (expand-json-object active-context active-property element))))
 
-(define (expand jsobj)
+(define (expand jsobj #:return-active-context [return-active-context #f])
   "Expand (v?)json using json-ld processing algorithms"
   (let-values ([(expanded-result active-context)
                 (expand-element initial-active-context 'null jsobj)])
@@ -1321,10 +1338,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
       (if (pair? expanded-result)
           expanded-result
           (list expanded-result)))
-    (values
-     ((compose-forward final-adjustments arrayify)
-      expanded-result)
-     active-context)))
+    (let ([final-result ((compose-forward final-adjustments arrayify)
+                         expanded-result)])
+      (if return-active-context
+          (values final-result active-context)
+          final-result))))
 
 
 ;; Algorithm 7.2
@@ -1391,3 +1409,311 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                               active-context)
                       (values result active-context)))))))
           (else (values result active-context))))))))
+
+
+;;; Compaction
+
+;;; Algorithm 8.1
+(define (compact-element active-context inverse-context active-property
+                         element compact-arrays)
+  (define flatten-append
+    (lambda (obj1 obj2)
+      (if (pair? obj2)
+          (if (pair? obj1)
+              (append obj1 obj2)
+              (cons obj1 obj2))
+          (if (pair? obj1)
+              (append obj1 (list obj2))
+              (cons obj1 (list obj2))))))
+  (match element
+    ;; sec 1
+    ;; If the element is a scalar, it is already in its most compact form
+    ((? scalar?) element)
+    ;; sec 2
+    ;; If the element is an array, compact each item recursively and return
+    ;; in a new array
+    ((list items ...)
+     ;; 2.1 - 2.2
+     (define result
+       (foldr
+        (lambda (item prev)
+          (define compacted-item
+            (compact-element active-context inverse-context active-property
+                             item compact-arrays))
+          (if (eq? compacted-item 'null)
+              result
+              (cons compacted-item prev)))
+        '()
+        items))
+     ;; 2.3 / 2.4
+     (if (and (= (length result) 1)
+              (not (active-context-container-mapping active-property
+                                                     active-context))
+              compact-arrays)
+         (first result)
+         result))
+    ;; sec 3
+    ((? jsobj?)
+     (cond
+      ;; sec 4
+      ((and (or (hash-has-key? element '@value)
+                (hash-has-key? element '@id))
+            (scalar? (compact-value active-context inverse-context
+                                    active-property element)))
+       element)
+      (else
+       (let ([inside-reverse (eq? active-property '@reverse)])  ; sec 5
+         ;; sec 7
+         (sequence-fold
+          (lambda (result expanded-property expanded-value)
+            (cond
+             ;; 7.1
+             ((member expanded-property '(@id @type))
+              (define compacted-value
+                (if (string? expanded-value)
+                    ;; 7.1.1
+                    (iri-compaction active-context inverse-context
+                                    expanded-value (eq? expanded-property
+                                                        '@type))
+                    ;; 7.1.2
+                    (let ([intermediate-cv
+                           (map
+                            (lambda (expanded-type)
+                              (iri-compaction active-context
+                                              inverse-context
+                                              expanded-type
+                                              #t))
+                            expanded-value)])
+                      (if (= (length intermediate-cv) 1)
+                          (first intermediate-cv)
+                          intermediate-cv))))
+              ;; 7.1.3
+              (define alias
+                (iri-compaction active-context inverse-context
+                                expanded-property #t))
+              (hash-set result alias compacted-value))
+             ;; 7.2
+             ((eq? expanded-property '@reverse)
+              ;; 7.2.1
+              (define initial-compacted-value
+                (compact-element active-context inverse-context
+                                 '@reverse expanded-value compact-arrays))
+              (define boxed-result (box result))
+              (define (result-box-set! key val)
+                (set-box! boxed-result
+                          (hash-set (unbox boxed-result)
+                                    key val)))
+              ;; 7.2.2
+              (define compacted-value
+                (sequence-fold
+                 (lambda (compacted-value property value)
+                   ;; 7.2.2.1
+                   ;; This section is very... confusing, with the ifs
+                   (if (active-context-reverse-property? property active-context)
+                       (let* ([value
+                               (if (and (or (eq? (active-context-container-mapping
+                                                  property
+                                                  active-context)
+                                                 '@set)
+                                            (not compact-arrays))
+                                        (not (pair? value)))
+                                   (list value)
+                                   value)])
+                         (if (not (hash-has-key? (unbox boxed-result) property))
+                             ;; 7.2.2.1.2
+                             (result-box-set! property value)
+                             ;; 7.2.2.1.3
+                             (result-box-set! property
+                                              ;; @@: Or should it be the reverse order?
+                                              (flatten-append (hash-ref (unbox boxed-result)
+                                                                        property)
+                                                              value)))
+                         ;; 7.2.2.1.4
+                         (hash-remove compacted-value property))
+                       ;; implied that this is the default for the non-if
+                       ;; in 7.2.2.1
+                       compacted-value))
+                 initial-compacted-value
+                 initial-compacted-value))
+              ;; 7.2.3
+              (when (not (hash-empty? compacted-value))
+                (let (;; 7.2.3.1
+                      [alias (iri-compaction active-context inverse-context
+                                             '@reverse #t)])
+                  (result-box-set! alias compacted-value)))
+              (unbox result))
+             
+             ;; 7.3
+             ((and (eq? expanded-property '@index)
+                   (eq? (active-context-container-mapping
+                         active-property
+                         active-context)
+                        '@index))
+              result)
+
+             ;; 7.4
+             ((member expanded-property '(@index @value @language))
+              (let (;; 7.4.1
+                    [alias (iri-compaction active-context inverse-context
+                                           expanded-property #t)])
+                (hash-set result alias expanded-value)))
+
+             ;; 7.5
+             ;; @@: But is this actually supposed to be part of the next
+             ;;   section where we do 7.6?  It doesn't say
+             ;;   "continue with next expanded property"!
+             ;;   But you'd think that would be true because otherwise 7.6.1
+             ;;   would clobber it
+             ((null? expanded-value)
+              (let ([item-active-property
+                     (iri-compaction active-context inverse-context
+                                     expanded-property expanded-value
+                                     #t inside-reverse)])
+                (if (not (hash-has-key? result item-active-property))
+                    ;; 7.5.2
+                    (hash-set result item-active-property '())
+                    (match (hash-ref result item-active-property)
+                      ((list items ...)
+                       ;; I guess we leave it as is?  This section
+                       ;; is very confusing
+                       result)
+                      (iap-cur-val
+                       (hash-set result item-active-property
+                                 (list iap-cur-val)))))))
+
+             ;; 7.6
+             (else
+              (foldr
+               (lambda (expanded-item result)
+                 (let* (;; 7.6.1
+                        [item-active-property
+                         (iri-compaction active-context inverse-context
+                                         expanded-property expanded-item
+                                         #t inside-reverse)]
+                        ;; 7.6.2
+                        [container
+                         (maybe-symbolify
+                          (match (active-context-container-mapping
+                                  item-active-property
+                                  active-context)
+                            ((? nothing?) 'null)
+                            (val val)))]
+                        ;; 7.6.3
+                        [compacted-item
+                         (compact-element active-context inverse-context
+                                          item-active-property
+                                          (if (hash-has-key? expanded-item '@list)
+                                              (hash-ref expanded-item '@list)
+                                              expanded-item))]
+                        ;; 7.6.4
+                        [compacted-item
+                         (if (pair? expanded-item)
+                             (let* (;; 7.6.4.1
+                                    [compacted-item
+                                     (if (pair? compacted-item)
+                                         compacted-item
+                                         (list compacted-item))])
+                               ;; 7.6.4.2
+                               (cond
+                                ((not (eq? container '@list))
+                                 ;; 7.4.6.2.1
+                                 (let ([c-i
+                                        `#hasheq((,(iri-compaction active-context
+                                                                   inverse-context
+                                                                   '@list)
+                                                  . ,compacted-item))])
+                                   ;; 7.4.6.2.2
+                                   (if (hash-has-key? expanded-item '@index)
+                                       (hash-set c-i
+                                                 (iri-compaction active-context
+                                                                 inverse-context
+                                                                 '@index)
+                                                 (hash-ref expanded-item '@index))
+                                       c-i)))
+                                ;; 7.6.4.3
+                                ((not (hash-has-key? result item-active-property))
+                                 (error 'json-ld-error
+                                        "compaction to lists of lists"))
+                                ;; the default, though unsaid
+                                (else compacted-item)))
+                             compacted-item)])
+                   (if (member container '(@language @index))
+                       ;; 7.6.5
+                       (let* (;; 7.6.5.1
+                              [result
+                               (if (not (hash-has-key? result item-active-property))
+                                   (hash-set result item-active-property
+                                             #hasheq())
+                                   result)]
+                              [map-object
+                               (hash-ref result item-active-property)]
+                              ;; 7.6.5.2
+                              [compacted-item
+                               (if (and (eq? container 'language)
+                                        (hash-has-key? compacted-item '@value))
+                                   (hash-ref compacted-item '@value)
+                                   compacted-item)]
+                              ;; 7.6.5.3
+                              [map-key
+                               (hash-ref expanded-item container)]
+                              ;; 7.6.5.4
+                              [map-object
+                               (if (not (hash-has-key? map-object map-key))
+                                   (hash-set map-object map-key compacted-item)
+                                   (hash-set map-object
+                                             (append
+                                              (match (hash-ref map-object map-key)
+                                                ((list items ...)
+                                                 items)
+                                                (item (list item)))
+                                              (list compacted-item))))])
+                         (hash-set result item-active-property map-object))
+                       ;; 7.6.6
+                       (let ([compacted-item
+                              (if (and (or (not compact-arrays)
+                                           (member container '(@set @list))
+                                           (member expanded-property '(@list @graph)))
+                                       (not (pair? compacted-item)))
+                                  (list compacted-item)
+                                  compacted-item)])
+                         (if (not (hash-has-key? result item-active-property))
+                             (hash-set result item-active-property compacted-item)
+                             (let ([cur-val
+                                    (match (hash-ref result item-active-property)
+                                      ((? pair? cur-val)
+                                       cur-val)
+                                      (cur-val (list cur-val)))])
+                               (hash-set result
+                                         item-active-property
+                                         ;; @@: I get this sense that doing this
+                                         ;;   append stuff is unnecessary... we could
+                                         ;;   do things way more efficiently if we cons
+                                         ;;   in the right direction...
+                                         (flatten-append cur-val compacted-item))))))))
+               result
+               expanded-value))))
+          '#hasheq()  ; sec 6
+          element)))))))
+
+(define (compact jsobj [compact-arrays #t])
+  (let* ([jsobj-context (jsobj-assoc jsobj '@context)]
+         [active-context
+          (if jsobj-context
+              (process-context active-context (cdr jsobj-context))
+              active-context)]
+         [inverse-context
+          (create-inverse-context active-context)]
+         [active-property 'null]
+         [element (expand jsobj)])
+    (compact-element active-context inverse-context
+                     active-property element
+                     compact-arrays)))
+
+(define (compact-value . args)
+  'TODO)
+
+(define (iri-compaction . args)
+  'TODO)
+
+(define (create-inverse-context . args)
+  'TODO)
