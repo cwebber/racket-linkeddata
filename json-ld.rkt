@@ -1616,11 +1616,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                         ;; 7.6.2
                         [container
                          (maybe-symbolify
-                          (match (active-context-container-mapping
-                                  item-active-property
-                                  active-context)
-                            ((? nothing?) 'null)
-                            (val val)))]
+                          (or (active-context-container-mapping
+                               item-active-property
+                               active-context)
+                              'null))]
                         ;; 7.6.3
                         [compacted-item
                          (compact-element active-context inverse-context
@@ -1738,11 +1737,107 @@ Does a multi-value-return of (expanded-iri active-context defined)"
         (hash-set result '@context context)
         result)))
 
+(define (create-inverse-context active-context)
+  (define terms
+    (active-context-terms active-context))
+  ;; for 3
+  (define sorted-term-keys
+    ;; We convert all the symbols to strings and back again up front
+    ;; so we don't have to do it per comparison
+    (map
+     string->symbol
+     (sort (map symbol->string (hash-keys terms))
+           (lambda (k1 k2)
+             ;; Sort keys K1 and K2 by string length, or fall back to by
+             ;; the lexicographically least term
+             (define k1-len (string-length k1))
+             (define k2-len (string-length k2))
+             (if (= k1-len k2-len)
+                 (string<? k1 k2)
+                 (< k1-len k2-len))))))
+  ;; note that unlike most of the other algorithms, we mutate this one...
+  ;; maybe we'll have reason to convert that later
+  ;; sec 1
+  (define result
+    (make-hash))
+  (define default-language
+    (if (defined? (active-context-language active-context))
+        (active-context-language active-context)
+        '@none))
+  ;; sec 3
+  (for ([term sorted-term-keys])
+    (define term-definition
+      (hash-ref terms term))
+    ;; 3.1
+    ;; if the term definition is null, nothing to do here
+    (unless (eq? term-definition 'null)
+      ;; otherwise, continue...
+      (let* ([container
+              (or (active-context-container-mapping
+                   term-definition
+                   active-context)
+                  '@none)]
+             ;; 3.3
+             ;; @@: I think this is what the iri mapping is?
+             [iri (jsobj-ref term-definition '@id)]
+             ;; 3.4 / 3.5
+             [container-map
+              (or (hash-ref result iri #f)
+                  (let ([hv (make-hash)])
+                    (hash-set! result iri hv)
+                    hv))]
+             ;; 3.6 / 3.7
+             [type/language-map
+              (or (hash-ref container-map container #f)
+                  (let ([tlm (make-hash `([@language . ,(make-hash)]
+                                          [@type . ,(make-hash)]))])
+                    (hash-set! container-map container tlm)
+                    tlm))])
+        (cond
+         ;; 3.8
+         ((active-context-reverse-property? term active-context)
+          (let ([type-map
+                 (hash-ref type/language-map '@type)])
+            (when (not (hash-has-key? type-map '@reverse))
+              (hash-set! type-map '@reverse term))))
+         ;; 3.9
+         ((hash-has-key? term-definition '@type)
+          (let ([tm-for-term-def (hash-ref term-definition '@type)]
+                [type-map
+                 (hash-ref type/language-map '@type)])
+            (when (not (hash-has-key? type-map tm-for-term-def))
+              (hash-set! type-map tm-for-term-def term))))
+         ;; 3.10
+         ((hash-has-key? term-definition '@language)
+          (let* ([language-mapping
+                  (hash-ref term-definition '@language)]
+                 ;; 3.10.1
+                 [language-map
+                  (hash-ref type/language-map '@language)]
+                 ;; 3.10.2
+                 [language
+                  (if (eq? language-mapping 'null)
+                      '@null
+                      ;; ?? I think this is right?
+                      language-mapping)])
+            (when (not (hash-has-key? language-map language))
+              (hash-set! language-map language term))))
+         ;; 3.11
+         (else
+          (let ([language-map (hash-ref type/language-map '@language)])
+            (when (not (hash-has-key? language-map default-language))
+              (hash-set! language-map default-language term))
+            (when (not (hash-has-key? language-map '@none))
+              (hash-set! language-map '@none term))
+            (let ([type-map (hash-ref type/language-map '@type)])
+              (when (not (hash-has-key? type-map '@none))
+                (hash-set! language-map '@none term)))))))))
+  result)
+
 (define (compact-value . args)
   'TODO)
 
 (define (iri-compaction . args)
   'TODO)
 
-(define (create-inverse-context . args)
-  'TODO)
+
