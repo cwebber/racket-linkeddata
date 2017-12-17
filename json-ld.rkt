@@ -214,15 +214,20 @@ rathr than #t if true (#f of course if false)"
      active-context
      [terms (hash-remove (active-context-terms active-context) key)])))
 
-(define (active-context-container-mapping key active-context)
-  (let* ([term-def (active-context-terms-ref key active-context)])
-    (and term-def
-         (hash-ref term-def '@container #f))))
+(define (%active-context-term-prop term-prop)
+  (lambda (key active-context)
+    (let* ([term-def (active-context-terms-ref key active-context)])
+      (and term-def
+           (hash-ref term-def term-prop #f)))))
 
-(define (active-context-reverse-property? key active-context)
-  (let* ([term-def (active-context-terms-ref key active-context)])
-    (and term-def
-         (hash-ref term-def '@reverse #f))))
+(define active-context-container-mapping
+  (%active-context-term-prop '@container))
+(define active-context-reverse-property?
+  (%active-context-term-prop '@reverse))
+(define active-context-type-mapping
+  (%active-context-term-prop '@type))
+(define active-context-language-mapping
+  (%active-context-term-prop '@language))
 
 ;; @@: We may not need these two next macros...
 ;;  remove soon if not used
@@ -1834,8 +1839,56 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                 (hash-set! language-map '@none term)))))))))
   result)
 
-(define (compact-value . args)
-  'TODO)
+(define (compact-value active-context inverse-context active-property value)
+  (define number-members
+    ;; sec 1
+    (- (hash-count value)
+       ;; sec 2
+       (if (and (hash-has-key? value '@index)
+                (eq? (active-context-container-mapping
+                      active-property
+                      active-context) '@index))
+           1 0)))
+  (cond
+   ;; sec 3
+   ;; If number-members is greater than 2, we return value as-is because
+   ;; it can't be further compacted
+   ((> number-members 2)
+    value)
+   ;; sec 4
+   ((hash-has-key? value '@id)
+    (let ([type-mapping (active-context-type-mapping active-property active-context)])
+      (cond
+       ;; 4.1
+       ((and (= number-members 1)
+             (eq? type-mapping '@id))
+        (iri-compaction active-context inverse-context (hash-ref value '@id)))
+       ;; 4.2
+       ((and (= number-members 1)
+             (eq? type-mapping '@vocab))
+        (iri-compaction active-context inverse-context (hash-ref value '@id)))
+       ;; 4.3
+       (else value))))
+   ;; @@: these next three could be wrapped in an or but I guess
+   ;;   it's fine as-is
+   ;; sec 5
+   ((and (hash-has-key? value '@type)
+         (equal? (hash-ref value '@type)
+                 (active-context-type-mapping active-property active-context)))
+    (hash-ref value '@value))
+   ;; sec 6
+   ((and (hash-has-key? value '@language)
+         (equal? (hash-ref value '@language)
+                 (active-context-language-mapping active-property active-context)))
+    (hash-ref value '@value))
+   ;; sec 7
+   ((and (= number-members 1)
+         (or (not (string? (hash-ref value '@value)))
+             (not (active-context-language active-context))
+             (eq? (active-context-language-mapping active-property active-context)
+                  'null)))
+    (hash-ref value '@value))
+   (else value)))
 
 (define (iri-compaction . args)
   'TODO)
