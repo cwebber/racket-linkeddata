@@ -340,9 +340,11 @@ fold instead of fold-right >:)"
 
 (define (absolute->relative-url url url-base)
   "Converts URL (a string) into a relative url against URL-BASE"
-  (if (string-prefix? url url-base)
-      (substring url (string-length url-base))
-      url))
+  (let ([url (maybe-stringify url)]
+        [url-base (maybe-stringify url-base)])
+    (if (string-prefix? url url-base)
+        (substring url (string-length url-base))
+        url)))
 
 ;;; =============
 
@@ -2072,39 +2074,36 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               ((string-contains? term-str ":")
                'skip-me)
               ;; 5.2
-              ((or (eq? term-definition 'null)
-                   (let ([iri-mapping
-                          (maybe-stringify
-                           (active-context-iri-mapping
-                            term-definition
-                            active-context))])
+              ((or (eq? (pk 'term-definition term-definition) 'null)
+                   (let ([iri-mapping (hash-ref term-definition '@id)])
                      (or (equal? iri-mapping iri-str)
                          (and iri-str iri-mapping (not (string-prefix? iri-str iri-mapping))))))
                'skip-me)
               (else
                (let* ([iri-mapping
-                       (active-context-iri-mapping
-                        term-definition
-                        active-context)]
+                       (hash-ref term-definition '@id)]
                       ;; 5.3
-                      [candidate (string-append term-str ":" (substring (length iri-mapping)))])
+                      [candidate (string-append term-str ":"
+                                                (substring iri-str (string-length iri-mapping)))])
                  ;; 5.4
                  ;; the grouping of ands and ors is really unclear here to me
                  (when (and (or (eq? compact-iri 'null)
                                 (< (string-length candidate) (string-length compact-iri))
                                 (and (= (string-length candidate) (string-length compact-iri))
                                      (string<? candidate compact-iri)))
-                            (or (not (active-context-terms-assoc candidate active-context)
-                                     (and (equal? iri-mapping iri)
-                                          (eq? value 'null)))))
+                            (or (not (active-context-terms-assoc candidate active-context))
+                                (and (equal? iri-mapping iri)
+                                     (eq? value 'null))))
                    (set! compact-iri candidate)))))))
          ;; 6
          (when (not (eq? compact-iri 'null))
-           (return compact-iri))
+           (return (maybe-symbolify compact-iri)))
          ;; 7
          (when (not vocab?)
            ;; @@: It says document's base IRI, but I assumes it means this?
-           (return (absolute->relative-url iri (active-context-base active-context))))
+           (return (maybe-symbolify
+                    (absolute->relative-url
+                     iri (active-context-base active-context)))))
          ;; 8
          iri))))))
 
