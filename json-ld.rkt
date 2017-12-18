@@ -228,6 +228,8 @@ rathr than #t if true (#f of course if false)"
   (%active-context-term-prop '@type))
 (define active-context-language-mapping
   (%active-context-term-prop '@language))
+(define active-context-iri-mapping
+  (%active-context-term-prop '@id))
 
 ;; @@: We may not need these two next macros...
 ;;  remove soon if not used
@@ -335,6 +337,12 @@ fold instead of fold-right >:)"
         (if (listy? obj1)
             (append obj1 (list obj2))
             (cons obj1 (list obj2))))))
+
+(define (absolute->relative-url url url-base)
+  "Converts URL (a string) into a relative url against URL-BASE"
+  (if (string-prefix? url url-base)
+      (substring url (string-length url-base))
+      url))
 
 ;;; =============
 
@@ -1890,7 +1898,209 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     (hash-ref value '@value))
    (else value)))
 
-(define (iri-compaction . args)
-  'TODO)
-
+(define (iri-compaction active-context inverse-context iri
+                        [value #f] [vocab? #f] [reverse? #f])
+  (call/ec
+   (lambda (return)
+     (cond
+      ;; sec 1
+      ((eq? iri 'null)
+       'null)
+      ;; sec 2
+      ((and vocab? (hash-has-key? inverse-context iri))
+       (let* (;; 2.1
+              [default-language (active-context-language active-context)]
+              ;; 2.2
+              [containers '()]
+              ;; 2.3
+              [type/language '@language]
+              [type/language-value '@null])
+         ;; 2.4
+         (when (and (hash? value)
+                    (hash-has-key? value '@index))
+           (set! containers (cons '@index containers)))
+         (cond
+          ;; 2.5
+          (reverse?
+           (set! type/language '@type)
+           (set! type/language-value '@reverse)
+           (set! containers (cons '@set containers)))
+          ;; 2.6
+          ((hash-has-key? value '@list)
+           ;; 2.6.1
+           (when (not (hash-has-key? value '@index))
+             (set! containers (cons '@set containers)))
+           (let* (;; 2.6.2
+                  [lst (hash-ref value '@list)]
+                  ;; 2.6.3
+                  [common-type 'null]
+                  [common-language
+                   (if (null? lst)
+                       default-language
+                       'null)])
+             (call/ec
+              (lambda (escape-loop)
+                ;; 2.6.4
+                (for ([item lst])
+                  (let (;; 2.6.4.1
+                        [item-language '@none]
+                        [item-type '@none])
+                    (if (hash-has-key? item '@value)
+                        (cond
+                         ((hash-has-key? item '@language)
+                          (set! item-language (hash-ref item '@language)))
+                         ((hash-has-key? item '@type)
+                          (set! item-type (hash-ref item '@type)))
+                         (else
+                          (set! item-language '@null)))
+                        (set! item-type '@id))
+                    (cond
+                     ;; 7.6.4.4
+                     ((eq? common-language 'null)
+                      (set! common-language item-language))
+                     ;; 7.6.4.5
+                     ((and (not (hash-has-key? item-language common-language))
+                           (hash-has-key? item '@value))
+                      (set! common-language '@none)))
+                    (cond
+                     ;; 7.6.4.6
+                     ((eq? common-type 'null)
+                      (set! common-type item-type))
+                     ;; 7.6.4.7
+                     ((not (equal? item-type common-type))
+                      (set! common-type '@none)))
+                    ;; 7.6.4.8
+                    (when (and (eq? common-language '@none)
+                               (eq? common-type '@none))
+                      (escape-loop))))))
+             ;; 2.6.5
+             (when (eq? common-language 'null)
+               (set! common-language '@none))
+             ;; 2.6.6
+             (when (eq? common-type 'null)
+               (set! common-type '@none))
+             (if (not (eq? common-type '@none))
+                 ;; 2.6.7
+                 (begin
+                   (set! type/language '@type)
+                   (set! type/language-value common-type))
+                 ;; 2.6.8
+                 (set! type/language common-language))))
+          ;; 2.7
+          (else
+           (if (hash-has-key? value '@value)
+               ;; 2.7.1
+               (cond
+                ;; 2.7.1.1
+                ((and (hash-has-key? value '@language)
+                      (not (hash-has-key? value '@index)))
+                 (set! type/language-value
+                       (hash-ref value '@language)))
+                ;; 2.7.1.2
+                ((hash-has-key? value '@type)
+                 (set! type/language-value '@type)
+                 (set! type/language '@type)))
+               ;; 2.7.2
+               (begin
+                 (set! type/language '@type)
+                 (set! type/language-value '@id)))))
+         (set! containers (cons '@set containers))
+         ;; 2.8
+         (set! containers (cons '@none containers))
+         ;; 2.9
+         (when (eq? type/language-value 'null)
+           (set! type/language-value '@null))
+         ;; 2.10
+         (let ([preferred-values '()])
+           ;; 2.11
+           (when (eq? type/language-value '@reverse)
+             (set! preferred-values (cons '@reverse preferred-values)))
+           ;; 2.12
+           (if (and (member type/language-value '(@id @reverse))
+                    (hash-has-key? value '@id))
+               ;; 2.12
+               (if (equal?
+                    (active-context-iri-mapping
+                     (iri-compaction active-context
+                                     inverse-context
+                                     (hash-ref value '@id)
+                                     #t #t #t)
+                     active-context)
+                    (hash-ref value '@id))
+                   ;; @@: Note that these look backwards because lisp lists :P
+                   ;; 2.12.1
+                   (set! preferred-values
+                         (cons '@none
+                               (cons '@id
+                                     (cons '@vocab preferred-values))))
+                   ;; 2.12.2
+                   (set! preferred-values
+                         (cons '@none
+                               (cons '@vocab
+                                     (cons '@id preferred-values)))))
+               ;; 2.13
+               (set! preferred-values
+                     (cons '@none
+                           (cons type/language-value preferred-values))))
+           ;; 2.14
+           (let ([term (term-selection inverse-context iri containers
+                                       type/language preferred-values)])
+             ;; 2.15
+             (when (not (eq? term 'null))
+               (return term))
+             ;; 3
+             (when (and vocab (defined? (active-context-vocab active-context)))
+               (let ([iri (maybe-stringify iri)]
+                     [vocab-mapping (maybe-stringify
+                                     (active-context-vocab active-context))])
+                 ;; 3.1
+                 (when (and (string-prefix? iri vocab-mapping)
+                            (> (string-length iri) (string-length vocab-mapping)))
+                   (let ([suffix (substring iri (string-length vocab-mapping))])
+                     (return suffix)))))
+             ;; 4
+             (let ([compact-iri 'null])
+               ;; 5
+               (for ([(term term-definition) (active-context-terms active-context)])
+                 
+                 ;; 5.1, 5.2
+                 (cond
+                  ;; 5.1
+                  ((string-contains? term ":")
+                   'skip-me)
+                  ;; 5.2
+                  ((or (eq? term-definition 'null)
+                       (let ([iri-mapping
+                              (active-context-iri-mapping
+                               term-definition
+                               active-context)])
+                         (or (equal? iri-mapping iri)
+                             (not (string-prefix? iri iri-mapping)))))
+                   'skip-me)
+                  (else
+                   (let* ([iri-mapping
+                           (active-context-iri-mapping
+                            term-definition
+                            active-context)]
+                          ;; 5.3
+                          [candidate (string-append term ":" (substring (length iri-mapping)))])
+                     ;; 5.4
+                     ;; the grouping of ands and ors is really unclear here to me
+                     (when (and (or (eq? compact-iri 'null)
+                                    (< (string-length candidate) (string-length compact-iri))
+                                    (and (= (string-length candidate) (string-length compact-iri))
+                                         (string< candidate compact-iri)))
+                                (or (not (active-context-terms-assoc candidate active-context)
+                                         (and (equal? iri-mapping iri)
+                                              (eq? value 'null)))))
+                       (set! compact-iri candidate))))))
+               ;; 6
+               (when (not (eq? compact-iri 'null))
+                 (return compact-iri))
+               ;; 7
+               (when (not vocab?)
+                 ;; @@: It says document's base IRI, but I assumes it means this?
+                 (return (absolute->relative-url iri (active-context-base active-context))))
+               ;; 8
+               iri)))))))))
 
