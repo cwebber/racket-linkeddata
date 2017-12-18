@@ -2047,62 +2047,66 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                        type/language preferred-values)])
              ;; 2.15
              (when (not (eq? term 'null))
-               (return term))
-             ;; 3
-             (when (and vocab? (defined? (active-context-vocab active-context)))
-               (let ([iri (maybe-stringify iri)]
-                     [vocab-mapping (maybe-stringify
-                                     (active-context-vocab active-context))])
-                 ;; 3.1
-                 (when (and (string-prefix? iri vocab-mapping)
-                            (> (string-length iri) (string-length vocab-mapping)))
-                   (let ([suffix (substring iri (string-length vocab-mapping))])
-                     (return suffix)))))
-             ;; 4
-             (let ([compact-iri 'null])
-               ;; 5
-               (for ([(term term-definition) (active-context-terms active-context)])
-                 
-                 ;; 5.1, 5.2
-                 (cond
-                  ;; 5.1
-                  ((string-contains? term ":")
-                   'skip-me)
-                  ;; 5.2
-                  ((or (eq? term-definition 'null)
-                       (let ([iri-mapping
-                              (active-context-iri-mapping
-                               term-definition
-                               active-context)])
-                         (or (equal? iri-mapping iri)
-                             (not (string-prefix? iri iri-mapping)))))
-                   'skip-me)
-                  (else
-                   (let* ([iri-mapping
+               (return term))))))
+      (else
+       ;; 3
+       (when (and vocab? (defined? (active-context-vocab active-context)))
+         (let ([iri-str (maybe-stringify iri)]
+               [vocab-mapping (maybe-stringify
+                               (active-context-vocab active-context))])
+           ;; 3.1
+           (when (and iri-str
+                      (string-prefix? iri-str vocab-mapping)
+                      (> (string-length iri-str) (string-length vocab-mapping)))
+             (let ([suffix (substring iri-str (string-length vocab-mapping))])
+               (return suffix)))))
+       ;; 4
+       (let ([iri-str (maybe-stringify iri)]
+             [compact-iri 'null])
+         ;; 5
+         (for ([(term term-definition) (active-context-terms active-context)])
+           (let ([term-str (symbol->string term)])
+             ;; 5.1, 5.2
+             (cond
+              ;; 5.1
+              ((string-contains? term-str ":")
+               'skip-me)
+              ;; 5.2
+              ((or (eq? term-definition 'null)
+                   (let ([iri-mapping
+                          (maybe-stringify
                            (active-context-iri-mapping
                             term-definition
-                            active-context)]
-                          ;; 5.3
-                          [candidate (string-append term ":" (substring (length iri-mapping)))])
-                     ;; 5.4
-                     ;; the grouping of ands and ors is really unclear here to me
-                     (when (and (or (eq? compact-iri 'null)
-                                    (< (string-length candidate) (string-length compact-iri))
-                                    (and (= (string-length candidate) (string-length compact-iri))
-                                         (string<? candidate compact-iri)))
-                                (or (not (active-context-terms-assoc candidate active-context)
-                                         (and (equal? iri-mapping iri)
-                                              (eq? value 'null)))))
-                       (set! compact-iri candidate))))))
-               ;; 6
-               (when (not (eq? compact-iri 'null))
-                 (return compact-iri))
-               ;; 7
-               (when (not vocab?)
-                 ;; @@: It says document's base IRI, but I assumes it means this?
-                 (return (absolute->relative-url iri (active-context-base active-context))))
-               ;; 8
-               iri)))))))))
+                            active-context))])
+                     (or (equal? iri-mapping iri-str)
+                         (and iri-str iri-mapping (not (string-prefix? iri-str iri-mapping))))))
+               'skip-me)
+              (else
+               (let* ([iri-mapping
+                       (active-context-iri-mapping
+                        term-definition
+                        active-context)]
+                      ;; 5.3
+                      [candidate (string-append term-str ":" (substring (length iri-mapping)))])
+                 ;; 5.4
+                 ;; the grouping of ands and ors is really unclear here to me
+                 (when (and (or (eq? compact-iri 'null)
+                                (< (string-length candidate) (string-length compact-iri))
+                                (and (= (string-length candidate) (string-length compact-iri))
+                                     (string<? candidate compact-iri)))
+                            (or (not (active-context-terms-assoc candidate active-context)
+                                     (and (equal? iri-mapping iri)
+                                          (eq? value 'null)))))
+                   (set! compact-iri candidate)))))))
+         ;; 6
+         (when (not (eq? compact-iri 'null))
+           (return compact-iri))
+         ;; 7
+         (when (not vocab?)
+           ;; @@: It says document's base IRI, but I assumes it means this?
+           (return (absolute->relative-url iri (active-context-base active-context))))
+         ;; 8
+         iri))))))
 
 (define (term-selection inverse-context iri containers
                         type/language preferred-values)
