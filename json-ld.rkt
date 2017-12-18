@@ -2049,7 +2049,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              (when (not (eq? term 'null))
                (return term))
              ;; 3
-             (when (and vocab (defined? (active-context-vocab active-context)))
+             (when (and vocab? (defined? (active-context-vocab active-context)))
                (let ([iri (maybe-stringify iri)]
                      [vocab-mapping (maybe-stringify
                                      (active-context-vocab active-context))])
@@ -2089,7 +2089,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      (when (and (or (eq? compact-iri 'null)
                                     (< (string-length candidate) (string-length compact-iri))
                                     (and (= (string-length candidate) (string-length compact-iri))
-                                         (string< candidate compact-iri)))
+                                         (string<? candidate compact-iri)))
                                 (or (not (active-context-terms-assoc candidate active-context)
                                          (and (equal? iri-mapping iri)
                                               (eq? value 'null)))))
@@ -2104,3 +2104,20 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                ;; 8
                iri)))))))))
 
+(define (term-selection inverse-context iri containers
+                        type/language preferred-values)
+  (call/ec
+   (lambda (return)
+     (define container-map (hash-ref inverse-context iri))
+     (for ([container containers])
+       ;; 2.1
+       (when (hash-has-key? container-map container)
+         (let* ([type/language-map (hash-ref container-map container)]
+                [value-map (hash-ref type/language-map type/language)])
+           ;; 2.4
+           (for ([item preferred-values])
+             ;; 2.4.1
+             (when (hash-has-key? value-map item)
+               (return (hash-ref value-map item)))))))
+     ;; 3
+     'null)))
