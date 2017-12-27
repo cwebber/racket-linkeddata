@@ -1788,13 +1788,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     (unless (eq? term-definition 'null)
       ;; otherwise, continue...
       (let* ([container
-              (or (active-context-container-mapping
-                   term-definition
-                   active-context)
-                  '@none)]
+              (hash-ref term-definition '@container 
+                        '@none)]
              ;; 3.3
              ;; @@: I think this is what the iri mapping is?
-             [iri (jsobj-ref term-definition '@id)]
+             [iri (maybe-symbolify (jsobj-ref term-definition '@id))]
              ;; 3.4 / 3.5
              [container-map
               (or (hash-ref result iri #f)
@@ -2000,7 +1998,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                        (hash-ref value '@language)))
                 ;; 2.7.1.2
                 ((hash-has-key? value '@type)
-                 (set! type/language-value '@type)
+                 (set! type/language-value (hash-ref value '@type))
                  (set! type/language '@type)))
                ;; 2.7.2
                (begin
@@ -2049,63 +2047,64 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                        type/language preferred-values)])
              ;; 2.15
              (when (not (eq? term 'null))
-               (return term))))))
-      (else
-       ;; 3
-       (when (and vocab? (defined? (active-context-vocab active-context)))
-         (let ([iri-str (maybe-stringify iri)]
-               [vocab-mapping (maybe-stringify
-                               (active-context-vocab active-context))])
-           ;; 3.1
-           (when (and iri-str
-                      (string-prefix? iri-str vocab-mapping)
-                      (> (string-length iri-str) (string-length vocab-mapping)))
-             (let ([suffix (substring iri-str (string-length vocab-mapping))])
-               (return suffix)))))
-       ;; 4
+               (return term)))))))
+     ;; 3
+     (when (and vocab? (defined? (active-context-vocab active-context)))
        (let ([iri-str (maybe-stringify iri)]
-             [compact-iri 'null])
-         ;; 5
-         (for ([(term term-definition) (active-context-terms active-context)])
-           (let ([term-str (symbol->string term)])
-             ;; 5.1, 5.2
-             (cond
-              ;; 5.1
-              ((string-contains? term-str ":")
-               'skip-me)
-              ;; 5.2
-              ((or (eq? (pk 'term-definition term-definition) 'null)
-                   (let ([iri-mapping (hash-ref term-definition '@id)])
-                     (or (equal? iri-mapping iri-str)
-                         (and iri-str iri-mapping (not (string-prefix? iri-str iri-mapping))))))
-               'skip-me)
-              (else
-               (let* ([iri-mapping
-                       (hash-ref term-definition '@id)]
-                      ;; 5.3
-                      [candidate (string-append term-str ":"
-                                                (substring iri-str (string-length iri-mapping)))])
-                 ;; 5.4
-                 ;; the grouping of ands and ors is really unclear here to me
-                 (when (and (or (eq? compact-iri 'null)
-                                (< (string-length candidate) (string-length compact-iri))
-                                (and (= (string-length candidate) (string-length compact-iri))
-                                     (string<? candidate compact-iri)))
-                            (or (not (active-context-terms-assoc candidate active-context))
-                                (and (equal? iri-mapping iri)
-                                     (eq? value 'null))))
-                   (set! compact-iri candidate)))))))
-         ;; 6
-         (when (not (eq? compact-iri 'null))
-           (return (maybe-symbolify compact-iri)))
-         ;; 7
-         (when (not vocab?)
-           ;; @@: It says document's base IRI, but I assumes it means this?
-           (return (maybe-symbolify
-                    (absolute->relative-url
-                     iri (active-context-base active-context)))))
-         ;; 8
-         iri))))))
+             [vocab-mapping (maybe-stringify
+                             (active-context-vocab active-context))])
+         ;; 3.1
+         (when (and iri-str
+                    (string-prefix? iri-str vocab-mapping)
+                    (> (string-length iri-str) (string-length vocab-mapping)))
+           (let ([suffix (substring iri-str (string-length vocab-mapping))])
+             (return suffix)))))
+     ;; 4
+     (let ([iri-str (maybe-stringify iri)]
+           [compact-iri 'null])
+       ;; 5
+       (for ([(term term-definition) (active-context-terms active-context)])
+         (let ([term-str (symbol->string term)])
+           ;; 5.1, 5.2
+           (cond
+            ;; 5.1
+            ((string-contains? term-str ":")
+             'skip-me)
+            ;; 5.2
+            ((or (eq? term-definition 'null)
+                 (let ([iri-mapping (hash-ref term-definition '@id)])
+                   (or (equal? iri-mapping iri-str)
+                       (and iri-str iri-mapping (not (string-prefix? iri-str iri-mapping))))))
+             'skip-me)
+            (else
+             (let* ([iri-mapping
+                     (hash-ref term-definition '@id)]
+                    ;; 5.3
+                    [candidate (string-append term-str ":"
+                                              (substring iri-str (string-length iri-mapping)))])
+               ;; 5.4
+               ;; the grouping of ands and ors is really unclear here to me
+               (when (or (and (or (eq? compact-iri 'null)
+                                  (< (string-length candidate)
+                                     (string-length compact-iri))
+                                  (and (= (string-length candidate)
+                                          (string-length compact-iri))
+                                       (string<? candidate compact-iri)))
+                              (not (active-context-terms-assoc candidate active-context)))
+                         (or (and (equal? iri-mapping iri-str)
+                                  (eq? value 'null))))
+                 (set! compact-iri candidate)))))))
+       ;; 6
+       (when (not (eq? compact-iri 'null))
+         (return (maybe-symbolify compact-iri)))
+       ;; 7
+       (when (not vocab?)
+         ;; @@: It says document's base IRI, but I assumes it means this?
+         (return (maybe-symbolify
+                  (absolute->relative-url
+                   iri (active-context-base active-context)))))
+       ;; 8
+       iri))))
 
 (define (term-selection inverse-context iri containers
                         type/language preferred-values)
