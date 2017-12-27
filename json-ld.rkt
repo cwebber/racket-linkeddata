@@ -839,15 +839,16 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                 ;; It's a blank node or absolute IRI, return!
                 (values value active-context defined)
                 ;; otherwise, carry on to 4.3...
-                (let-values ([(active-context defined)
-                              (if (and (not (eq? local-context 'null))
-                                       (jsobj-assoc local-context prefix)
-                                       (not (eq? (jsobj-ref local-context prefix))))
-                                  ;; ok, update active-context and defined
-                                  (create-term-definition active-context local-context
-                                                          prefix defined)
-                                  ;; nah leave them as-is
-                                  (values active-context defined))])
+                (let*-values ([(prefix) (maybe-symbolify prefix)]
+                              [(active-context defined)
+                               (if (and (not (eq? local-context 'null))
+                                        (jsobj-assoc local-context prefix)
+                                        (not (eq? (jsobj-ref local-context prefix) #t)))
+                                   ;; ok, update active-context and defined
+                                   (create-term-definition active-context local-context
+                                                           prefix defined)
+                                   ;; nah leave them as-is
+                                   (values active-context defined))])
                   (match (active-context-terms-assoc prefix active-context)
                     ;; We've got a match, which means we're returning
                     ;; the term definition uri for prefix concatenated
