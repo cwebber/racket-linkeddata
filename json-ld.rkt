@@ -1493,15 +1493,15 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          result))
     ;; sec 3
     ((? jsobj?)
-     (define compacted-value
+     (define sec-4-compacted-value
        (delay (compact-value active-context inverse-context
                              active-property element)))
      (cond
       ;; sec 4
       ((and (or (hash-has-key? element '@value)
                 (hash-has-key? element '@id))
-            (scalar? (force compacted-value)))
-       (force compacted-value))
+            (scalar? (force sec-4-compacted-value)))
+       (force sec-4-compacted-value))
       (else
        (let ([inside-reverse (eq? active-property '@reverse)])  ; sec 5
          ;; sec 7
@@ -1896,8 +1896,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
    ((and (= number-members 1)
          (or (not (string? (hash-ref value '@value)))
              (not (active-context-language active-context))
-             (eq? (active-context-language-mapping active-property active-context)
-                  'null)))
+             (member (active-context-language-mapping active-property active-context)
+                     '(#f null))))
     (hash-ref value '@value))
    (else value)))
 
