@@ -1369,7 +1369,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     ((? jsobj? _)
      (expand-json-object active-context active-property element))))
 
-(define (expand jsobj #:return-active-context [return-active-context #f])
+(define (expand-jsonld jsobj #:return-active-context [return-active-context #f])
   "Expand (v?)json using json-ld processing algorithms"
   (let-values ([(expanded-result active-context)
                 (expand-element initial-active-context 'null jsobj)])
@@ -1735,7 +1735,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           '#hasheq()  ; sec 6
           element)))))))
 
-(define (compact jsobj context #:compact-arrays [compact-arrays #t])
+(define (compact-jsonld jsobj context #:compact-arrays [compact-arrays #t])
   (let* ([active-context
           (process-context initial-active-context context)]
          [inverse-context
