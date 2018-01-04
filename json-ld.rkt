@@ -1,7 +1,7 @@
 #lang racket
 
 ;;; racket-linkeddata --- Linked data tooling for Racket
-;;; Copyright © 2017 Christopher Allan Webber <cwebber@dustycloud.org>
+;;; Copyright © 2017 Christopher Lemmer Webber <cwebber@dustycloud.org>
 ;;;
 ;;; This program is free software: you can redistribute it and/or modify
 ;;; it under the terms of the GNU Lesser General Public License as
