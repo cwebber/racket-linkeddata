@@ -2126,3 +2126,5 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                (return (hash-ref value-map item)))))))
      ;; 3
      'null)))
+
+(provide expand-jsonld compact-jsonld)
