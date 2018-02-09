@@ -1299,8 +1299,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
             ;;   we could do it just once... maybe with a (delay) at top
             ;;   of cond?
             ((and (jsobj-assoc result '@type)
-                  (listy? (jsobj-ref result '@type)))
-             (hash-set result '@type (jsobj-ref result '@type)))
+                  (not (listy? (jsobj-ref result '@type))))
+             (hash-set result '@type (list (jsobj-ref result '@type))))
 
             ;; sec 10
             ((or (jsobj-assoc result '@set)
