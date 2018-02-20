@@ -708,7 +708,7 @@ remaining context information to process from local-context"
                      (let ([prefix (string->symbol prefix)])
                        (let-values ([(active-context defined)
                                      ;; see if we should update the context...
-                                     (if (jsobj-assoc local-context term)
+                                     (if (jsobj-assoc local-context prefix)
                                          ;; It's in the local context...
                                          ;; so we should update the active context so we can
                                          ;; match against it!
