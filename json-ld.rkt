@@ -1322,7 +1322,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
          ;; sec 11
          (define (adjust-result-2 result)
-           (if (and (jsobj-assoc result '@language)
+           (if (and (jsobj? result)
+                    (jsobj-assoc result '@language)
                     (eqv? (hash-count result) 1))
                (return 'null active-context)
                result))
