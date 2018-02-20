@@ -943,8 +943,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
       (when (equal? key '@context)
         (return result active-context))
       ;; otherwise, on to 7.4.3
-      (let-values ([(expanded-property active-context defined)
-                    (iri-expansion active-context key #:vocab #t)])
+      (let*-values ([(expanded-property active-context defined)
+                     (iri-expansion active-context key #:vocab #t)]
+                    [(expanded-property)
+                     (maybe-symbolify expanded-property)])
         (cond
          ;; 7.3
          ((or (eq? 'null expanded-property)
