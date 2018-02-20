@@ -705,29 +705,30 @@ remaining context information to process from local-context"
                   ;; Check for compact iri
                   (match (string-split (symbol->string term) ":")
                     ((list prefix suffix-list ...)
-                     (let-values ([(active-context defined)
-                                   ;; see if we should update the context...
-                                   (if (jsobj-assoc local-context term)
-                                       ;; It's in the local context...
-                                       ;; so we should update the active context so we can
-                                       ;; match against it!
-                                       (create-term-definition
-                                        active-context local-context
-                                        prefix defined)
-                                       ;; oh okay don't update in that case
-                                       (values active-context defined))])
-                       (let ((prefix-in-context
-                              (active-context-terms-assoc prefix active-context)))
-                         (if prefix-in-context
-                             (values (hash-set definition '@id
-                                               (string-append
-                                                (jsobj-ref (cdr prefix-in-context) '@id)
-                                                (string-join suffix-list ":")))
-                                     active-context defined)
-                             ;; okay, yeah, it's set-iri-mapping-of-def-to-term
-                             ;; but we want to return the new active-context
-                             (values (hash-set definition '@id term)
-                                     active-context defined)))))))
+                     (let ([prefix (string->symbol prefix)])
+                       (let-values ([(active-context defined)
+                                     ;; see if we should update the context...
+                                     (if (jsobj-assoc local-context term)
+                                         ;; It's in the local context...
+                                         ;; so we should update the active context so we can
+                                         ;; match against it!
+                                         (create-term-definition
+                                          active-context local-context
+                                          prefix defined)
+                                         ;; oh okay don't update in that case
+                                         (values active-context defined))])
+                         (let ((prefix-in-context
+                                (active-context-terms-assoc prefix active-context)))
+                           (if prefix-in-context
+                               (values (hash-set definition '@id
+                                                 (string-append
+                                                  (jsobj-ref (cdr prefix-in-context) '@id)
+                                                  (string-join suffix-list ":")))
+                                       active-context defined)
+                               ;; okay, yeah, it's set-iri-mapping-of-def-to-term
+                               ;; but we want to return the new active-context
+                               (values (hash-set definition '@id term)
+                                       active-context defined))))))))
 
                  ;; sec 15
                  ((jsobj-assoc active-context '@vocab)
