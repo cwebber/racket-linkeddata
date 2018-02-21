@@ -1410,21 +1410,20 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                  (jsobj-assoc (cdr term-mapping) '@type)
                  #f)))
        (define (id-or-vocab-return expansion-thunk)
-         (let-values ([(result active-context)
+         (let-values ([(result active-context %ignored)
                        (expansion-thunk)])
-           (return
-            `#hasheq((@id . ,result))
-            active-context)))
+           (return `#hasheq((@id . ,result))
+                   active-context)))
 
        ;; sec 1
-       (when (and type-mapping (eq? (cdr type-mapping) '@id))
+       (when (and type-mapping (equal? (cdr type-mapping) "@id"))
          (id-or-vocab-return
           (lambda ()
             (iri-expansion active-context value
                            #:document-relative #t))))
 
        ;; sec 2
-       (when (and type-mapping (eq? (cdr type-mapping) '@vocab))
+       (when (and type-mapping (equal? (cdr type-mapping) "@vocab"))
          (id-or-vocab-return
           (lambda ()
             (iri-expansion active-context value
