@@ -1371,10 +1371,14 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     ((? jsobj? _)
      (expand-json-object active-context active-property element))))
 
-(define (expand-jsonld jsobj #:return-active-context [return-active-context #f])
+(define (expand-jsonld jsobj #:return-active-context [return-active-context #f]
+                       #:base-iri [base-iri 'null])
   "Expand (v?)json using json-ld processing algorithms"
-  (let-values ([(expanded-result active-context)
-                (expand-element initial-active-context 'null jsobj)])
+  (let*-values ([(active-context)
+                 (copy-active-context initial-active-context
+                                      [base base-iri])]
+                [(expanded-result active-context)
+                 (expand-element active-context 'null jsobj)])
     ;; final other than arrayify that is!
     (define (final-adjustments expanded-result)
       (cond ((and (jsobj? expanded-result)
