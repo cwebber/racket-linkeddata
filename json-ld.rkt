@@ -932,9 +932,9 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           (delay (active-context-terms-assoc key active-context)))
          (container-mapping
           (delay
-            (when (force term-mapping)
-              (jsobj-ref (cdr (force term-mapping))
-                         '@container)))))
+            (and (force term-mapping)
+                 (jsobj-ref (cdr (force term-mapping))
+                            '@container)))))
     (define (get-expanded-value return)
       "Get expanded value; return is a prompt to bail out early"
       ;; 7.4.1, if key is @context, continue to next key
