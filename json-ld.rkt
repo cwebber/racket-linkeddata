@@ -909,14 +909,12 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                 (error 'json-error
                        "list of lists"))
 
-              ;; TODO: this seems super wrong
               (match expanded-item
                 ((? listy? _)
                  (cons (append expanded-item result)
                        active-context))
-                ;; TODO: Is this right?  Shouldn't we just skip if null?
                 ('null
-                 (cons 'null active-context))
+                 (cons result active-context))
                 (_
                  (cons (cons expanded-item result) active-context))))))))
      (cons '() active-context)
@@ -966,7 +964,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
           (call-with-values
               (lambda ()
-                (match (maybe-symbolify expanded-property)
+                (match expanded-property
                   ;; 7.4.3
                   ('@id
                    (when (not (string? value))
@@ -1179,7 +1177,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      (get-expanded-value return)])
          (define (append-prop-val-to-result expanded-property expanded-value
                                             result)
-           (hash-set result (maybe-symbolify expanded-property)
+           (hash-set result expanded-property
                      (flatten-append
                       expanded-value
                       (if (jsobj-assoc result expanded-property)
