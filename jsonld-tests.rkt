@@ -20,7 +20,7 @@
   (define input
     (read-tests-json-file (hash-ref test 'input)))
   (define context
-    (read-tests-json-file (hash-ref test 'context)))
+    (hash-ref (read-tests-json-file (hash-ref test 'context)) '@context))
   (define expect
     (read-tests-json-file (hash-ref test 'expect)))
   (define options
