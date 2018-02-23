@@ -1747,7 +1747,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          [inverse-context
           (create-inverse-context active-context)]
          [active-property 'null]
-         [element (expand jsobj)]
+         [element (expand-jsonld jsobj)]
          [result
           (match (compact-element active-context inverse-context
                                   active-property element
