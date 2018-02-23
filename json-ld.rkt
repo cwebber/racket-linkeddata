@@ -1124,7 +1124,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                       (error 'json-ld-error "invalid language map value"))
                     (cons
                      `#hasheq((@value . ,item)
-                              (@language . ,(string-downcase language)))
+                              (@language . ,(string-downcase
+                                             (symbol->string language))))
                      expanded-value))
                   expanded-value
                   (if (listy? language-value)
