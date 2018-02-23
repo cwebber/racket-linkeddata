@@ -1878,11 +1878,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
       (cond
        ;; 4.1
        ((and (= number-members 1)
-             (eq? type-mapping '@id))
+             (equal? type-mapping "@id"))
         (iri-compaction active-context inverse-context (hash-ref value '@id)))
        ;; 4.2
        ((and (= number-members 1)
-             (eq? type-mapping '@vocab))
+             (equal? type-mapping "@vocab"))
         (iri-compaction active-context inverse-context (hash-ref value '@id)))
        ;; 4.3
        (else value))))
