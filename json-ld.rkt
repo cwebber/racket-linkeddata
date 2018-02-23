@@ -735,8 +735,8 @@ remaining context information to process from local-context"
                  ((defined? (active-context-vocab active-context))
                   (values (hash-set definition '@id
                                     (string-append
-                                     (jsobj-ref active-context '@vocab)
-                                     term))
+                                     (active-context-vocab active-context)
+                                     (symbol->string term)))
                           active-context defined))
 
                  (else
