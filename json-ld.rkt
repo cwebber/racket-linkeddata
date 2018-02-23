@@ -1110,7 +1110,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;; 7.5
          ;; If key's container mapping in active-context is @language and
          ;; value is a jsobj then value is expanded from a language map
-         ((and (equal? (force container-mapping) '@language)
+         ((and (equal? (force container-mapping) "@language")
                (jsobj? value))
           (values
            (foldl
@@ -1138,7 +1138,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
            active-context))
          
          ;; 7.6
-         ((and (equal? (force container-mapping) '@index)
+         ((and (equal? (force container-mapping) "@index")
                (jsobj? value))
           ;; @@: In reality the code here is very similar to 
           ;;   in 7.5, but I think this is much more readable...
@@ -1196,7 +1196,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
          (cond
           ;; 7.9
-          ((and (equal? (force container-mapping) '@list)
+          ((and (equal? (force container-mapping) "@list")
                 (not (list-object? expanded-value)))
            (values
             (append-prop-val-to-result
@@ -1557,10 +1557,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                    ;; This section is very... confusing, with the ifs
                    (if (active-context-reverse-property? property active-context)
                        (let* ([value
-                               (if (and (or (eq? (active-context-container-mapping
-                                                  property
-                                                  active-context)
-                                                 '@set)
+                               (if (and (or (equal? (active-context-container-mapping
+                                                     property
+                                                     active-context)
+                                                    "@set")
                                             (not compact-arrays))
                                         (not (listy? value)))
                                    (list value)
@@ -1591,10 +1591,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              
              ;; 7.3
              ((and (eq? expanded-property '@index)
-                   (eq? (active-context-container-mapping
-                         active-property
-                         active-context)
-                        '@index))
+                   (equal? (active-context-container-mapping
+                            active-property
+                            active-context)
+                           "@index"))
               result)
 
              ;; 7.4
@@ -1660,7 +1660,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                          (list compacted-item))])
                                ;; 7.6.4.2
                                (cond
-                                ((not (eq? container '@list))
+                                ((not (equal? container "@list"))
                                  ;; 7.4.6.2.1
                                  (let ([c-i
                                         `#hasheq((,(iri-compaction active-context
@@ -1682,7 +1682,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                 ;; the default, though unsaid
                                 (else compacted-item)))
                              compacted-item)])
-                   (if (member container '(@language @index))
+                   (if (member container '("@language" "@index"))
                        ;; 7.6.5
                        (let* (;; 7.6.5.1
                               [result
@@ -1694,7 +1694,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                (hash-ref result item-active-property)]
                               ;; 7.6.5.2
                               [compacted-item
-                               (if (and (eq? container 'language)
+                               (if (and (equal? container "@language")
                                         (hash-has-key? compacted-item '@value))
                                    (hash-ref compacted-item '@value)
                                    compacted-item)]
@@ -1716,7 +1716,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                        ;; 7.6.6
                        (let ([compacted-item
                               (if (and (or (not compact-arrays)
-                                           (member container '(@set @list))
+                                           (member container '("@set" "@list"))
                                            (member expanded-property '(@list @graph)))
                                        (not (listy? compacted-item)))
                                   (list compacted-item)
@@ -1797,7 +1797,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
       ;; otherwise, continue...
       (let* ([container
               (hash-ref term-definition '@container 
-                        '@none)]
+                        "@none")]
              ;; 3.3
              ;; @@: I think this is what the iri mapping is?
              [iri (maybe-symbolify (jsobj-ref term-definition '@id))]
@@ -1861,9 +1861,9 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     (- (hash-count value)
        ;; sec 2
        (if (and (hash-has-key? value '@index)
-                (eq? (active-context-container-mapping
-                      active-property
-                      active-context) '@index))
+                (equal? (active-context-container-mapping
+                         active-property
+                         active-context) "@index"))
            1 0)))
   (cond
    ;; sec 3
