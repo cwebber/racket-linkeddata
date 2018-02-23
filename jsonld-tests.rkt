@@ -62,8 +62,9 @@
                                 (hash-ref expand-manifest 'baseIri)
                                 (hash-ref test 'input)))
      expect))
-  (display (format "~a\n  input: jsonld-test-suite/~a\n  expect: jsonld-test-suite/~a\n"
+  (display (format "~a\n  purpose: ~a\n  input: jsonld-test-suite/~a\n  expect: jsonld-test-suite/~a\n"
                    check-name
+                   (hash-ref test 'purpose "(not supplied)")
                    (hash-ref test 'input)
                    (hash-ref test 'expect)))
   (if catch-exceptions?
