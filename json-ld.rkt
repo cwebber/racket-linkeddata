@@ -621,7 +621,7 @@ remaining context information to process from local-context"
                      (error 'json-ld-error
                             "invalid reverse property"))
 
-                   (let-values ([(expanded-iri active-context)
+                   (let-values ([(expanded-iri active-context _)
                                  (iri-expansion active-context reverse-prop
                                                 #:vocab #t #:document-relative #f
                                                 #:local-context local-context
