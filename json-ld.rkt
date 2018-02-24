@@ -438,7 +438,7 @@ remaining context information to process from local-context"
           ;; we break these out into functions then do the fold.
           (define (modify-result-from-base result base)
             (if (and base
-                     (eq? remote-contexts 'null))
+                     (eq? remote-contexts '()))
                 ;; In this case we'll adjusting the result's '@base
                 ;; depending on what this context's @base is
                 (match base
