@@ -630,7 +630,7 @@ remaining context information to process from local-context"
                      (when (not (absolute-uri? expanded-iri))
                        ;; Uhoh
                        (error 'json-ld-error
-                              "invalid IRI mapping"))
+                              "invalid IRI mapping 1"))
 
                      (let ((definition
                              (hash-set
@@ -646,7 +646,7 @@ remaining context information to process from local-context"
                         (hash-cons term #t defined)))))
                   (_
                    (error 'json-ld-error
-                          "invalid IRI mapping"))))
+                          "invalid IRI mapping 2"))))
 
               ;; Helper method for 11
               (define (%definition-handle-container-reverse definition)
@@ -681,7 +681,7 @@ remaining context information to process from local-context"
                   (let ((id-val (jsobj-ref value '@id)))
                     (when (not (string? id-val))
                       (error 'json-ld-error
-                             "invalid IRI mapping"))
+                             "invalid IRI mapping 3"))
 
                     (let-values ([(expanded-iri active-context defined)
                                   (iri-expansion active-context id-val
@@ -692,7 +692,7 @@ remaining context information to process from local-context"
                                      (absolute-uri? expanded-iri)
                                      (blank-node? expanded-iri)))
                         (error 'json-ld-error
-                               "invalid IRI mapping"))
+                               "invalid IRI mapping 4"))
                       (when (equal? (maybe-stringify expanded-iri) "@context")
                         (error 'json-ld-error
                                " invalid keyword alias"))
@@ -741,7 +741,7 @@ remaining context information to process from local-context"
 
                  (else
                   (error 'json-ld-error
-                         "invalid IRI mapping"))))
+                         "invalid IRI mapping 5"))))
 
               ;; 16
               (define (definition-handle-container definition active-context defined)
