@@ -899,7 +899,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
      (lambda (item prev)
        (match prev
          ((cons result active-context)
-          (let-values ([(expanded-item active-context)
+          (let-values ([(expanded-item _)
                         (expand-element active-context active-property item)])
             (let ((active-property-term-result
                    (active-context-terms-assoc active-property active-context)))
@@ -1037,7 +1037,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                    ;; Bail out early if null or @graph to remove free-floating list
                    (when (member active-property '(null "@graph"))
                      (return result active-context))
-                   (let-values ([(expanded-value active-context)
+
+                   (let-values ([(expanded-value _)
                                  (expand-element active-context active-property value)])
                      ;; oops!  no lists of lists
                      (when (list-object? expanded-value)
@@ -1062,7 +1063,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                    (when (not (jsobj? value))
                      (error 'json-ld-error "invalid @reverse value"))
 
-                   (let-values ([(expanded-value active-context)
+                   (let-values ([(expanded-value _)
                                  (expand-element active-context '@reverse value)])
                      (return
                       ;; here might be a great place to break out
@@ -1164,7 +1165,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               ('()
                (values result active-property active-context))
               ((list (cons index index-value) rest ...)
-               (let-values ([(index-value active-context)
+               (let-values ([(index-value _)
                              (expand-element active-context key
                                              (if (listy? index-value)
                                                  index-value
@@ -1182,7 +1183,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
          ;; 7.7
          (else
-          (let-values ([(expanded-value active-context)
+          (let-values ([(expanded-value _)
                         (expand-element active-context key value)])
             (values expanded-value expanded-property active-context))))))
 
@@ -1392,7 +1393,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
   (let*-values ([(active-context)
                  (copy-active-context initial-active-context
                                       [base base-iri])]
-                [(expanded-result active-context)
+                [(expanded-result _)
                  (expand-element active-context 'null jsobj)])
     ;; final other than arrayify that is!
     (define (final-adjustments expanded-result)
