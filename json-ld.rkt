@@ -944,7 +944,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                             '@container)))))
     (define (get-expanded-value return)
       "Get expanded value; return is a prompt to bail out early"
-      ;; 7.4.1, if key is @context, continue to next key
+      ;; 7.1, if key is @context, continue to next key
       (when (equal? key '@context)
         (return result active-context))
       ;; otherwise, on to 7.4.3
