@@ -1043,7 +1043,14 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      (when (list-object? expanded-value)
                        (error 'json-ld-error "list of lists"))
                      ;; otherwise, continue with this as expanded value
-                     (values expanded-value active-context)))
+                     ;; @@: I'm not totally sure if this is right.  We added the
+                     ;;   wrap-in-list thing later... it's not specified in the
+                     ;;   json-ld-api doc, but it *seems* right... and it fixes a
+                     ;;   test...
+                     (values (if (listy? expanded-value)
+                                 expanded-value
+                                 (list expanded-value))
+                             active-context)))
 
                   ;; 7.4.10
                   ('@set
