@@ -321,7 +321,7 @@ fold instead of fold-right >:)"
       (lambda () body)
     (lambda vals
       (display "#;\n")
-      (pretty-print print-these ... '*pk-values:* vals)
+      (pretty-print (list print-these ... '*pk-values:* vals))
       (apply values vals))))
 
 (define (listy? obj)
