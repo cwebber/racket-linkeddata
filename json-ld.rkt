@@ -827,10 +827,17 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;; 3
          ((and (eq? vocab #t)
                (active-context-terms-assoc value active-context))
-          (values
-           (jsobj-ref (cdr (active-context-terms-assoc value active-context)) '@id)
-           active-context
-           defined))
+          (define mapping
+            (active-context-terms-assoc value active-context))
+          (if (eq? mapping 'null)
+              ;; value is explicitly ignored with null mapping
+              (values 'null active-context defined)
+              ;; value is a term
+              (values
+               (jsobj-ref (cdr (active-context-terms-assoc value active-context))
+                          '@id)
+               active-context
+               defined)))
          ;; 4
          ((absolute-uri? value)
           (let* ((split-string (string-split (maybe-stringify value) ":"))
