@@ -502,31 +502,32 @@ remaining context information to process from local-context"
                    (error 'json-ld-error "invalid default language"))))
 
           (define (build-result)
-            (car
-             (sequence-fold
-              (lambda (prev ctx-key ctx-val)
-                (match prev
-                  ((cons result defined)
-                   (match ctx-key
-                     ('@base
-                      (cons (modify-result-from-base result ctx-val)
-                            defined))
-                     ('@vocab
-                      (cons (modify-result-from-vocab result ctx-val)
-                            defined))
-                     ('@language
-                      (cons (modify-result-from-language result ctx-val)
-                            defined))
-                     (_
-                      ;; Notably we aren't passing ctx-ctx-key here because
-                      ;; (I suppose) create-term-definition has the whole context
-                      ;; and so can look it up anyway...
-                      (let-values ([(result defined)
-                                    (create-term-definition
-                                     result context ctx-key defined)])
-                        (cons result defined)))))))
-              (cons result #hasheq()) ;; second value here is "defined"
-              context)))
+            (define (jld-keyword-processor keyword func)
+              (lambda (result)
+                (if (hash-has-key? context keyword)
+                    (func result (hash-ref context keyword))
+                    result)))
+            (define process-jsonld-keywords
+              (compose (jld-keyword-processor
+                        '@base modify-result-from-base)
+                       (jld-keyword-processor
+                        '@vocab modify-result-from-vocab)
+                       (jld-keyword-processor
+                        '@language modify-result-from-language)))
+            (define (process-other-kv result)
+              (for/fold ([result result]
+                         [defined #hasheq()])
+                  ([(key val) context])
+                (if (member key '(@base @vocab @language))
+                    ;; No-op, we handled this in process-jsonld-keywords
+                    (values result defined)
+                    ;; Otherwise...
+                    (create-term-definition result context key defined))))
+            (let*-values ([(result)
+                           (process-jsonld-keywords result)]
+                          [(result defined)
+                           (process-other-kv result)])
+              result))
 
           (loop
            (build-result)
