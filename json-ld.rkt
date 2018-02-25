@@ -146,15 +146,7 @@
   "A sorta-correct way to join a URI to BASE, assuming there is a BASE,
 and assuming URI isn't a URI on its own.
 
-If not, it just returns URI.
-
-Does the dumbest possible thing: string-appends together the base and URI.
-This might not be the best way to do it, further reading into
-  http://tools.ietf.org/html/rfc3986#section-5.1
-should be done.
-
-TODO: It loooks like the correct version of this is done in jsonld.py
-"
+If not, it just returns URI."
   (define (convert-uri uri)
     (match uri
       [#f #f]
