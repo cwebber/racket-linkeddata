@@ -1064,55 +1064,52 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                    (when (not (jsobj? value))
                      (error 'json-ld-error "invalid @reverse value"))
 
-                   (let-values ([(expanded-value _)
-                                 (expand-element active-context '@reverse value)])
-                     (return
-                      ;; here might be a great place to break out
-                      ;; another function
-                      (cond
-                       ((jsobj-assoc expanded-value '@reverse)
-                        (sequence-fold
-                         (lambda (result property item)
-                           (let ((property-in-result
-                                  (jsobj-assoc result property)))
-                             ;; @@: hash-set maybe?
-                             (hash-set result property
-                                       (if property-in-result
-                                           (cons item (cdr property-in-result))
-                                           (list item)))))
-                         result
-                         (jsobj-ref expanded-value '@reverse)))
-                       ((listy? expanded-value)
-                        (sequence-fold
-                         (lambda (result property items)
-                           (if (equal? property '@reverse)
-                               ;; skip this one
-                               result
-                               ;; otherwise, continue
-                               (foldl
-                                (lambda (item result)
-                                  (let ((reverse-map (jsobj-ref result '@reverse)))
-                                    (when (or (value-object? item)
-                                              (list-object? item))
-                                      (error 'json-ld-error
-                                             "invalid reverse property value"))
-                                    (hash-set result '@reverse
-                                              (hash-set reverse-map key
-                                                        (cons item
-                                                              ;; @@: this can be simplified
-                                                              (if (jsobj-assoc reverse-map property)
-                                                                  (jsobj-ref reverse-map property)
-                                                                  '()))))))
-                                result
-                                items)))
-                         (if (jsobj-assoc result '@reverse)
-                             result
-                             ;; TODO: fix this
-                             ;; TODO: What were we fixing
-                             (hash-set result '@reverse #hasheq()))
-                         expanded-value))
-                       (else result))
-                      active-context)))))
+                   ;; 7.4.11.1
+                   (define-values (expanded-value _)
+                     (expand-element active-context '@reverse value))
+
+                   (let* (;; 7.4.11.2
+                          [result
+                           (cond
+                            [(hash-has-key? expanded-value '@reverse)
+                             (define double-reverse-val (hash-ref expanded-value '@reverse))
+                             ;; Not said in the spec but it only makes sense, right?
+                             (when (not (jsobj? double-reverse-val))
+                               (error 'json-ld-error "invalid @reverse value"))
+                             (sequence-fold
+                              (lambda (result property item)
+                                (let ([prop-member (hash-ref result property '())])
+                                  (hash-set result property
+                                            (cons item prop-member))))
+                              result
+                              double-reverse-val)]
+                            [else result])]
+                          ;; 7.4.11.3
+                          [result
+                           (sequence-fold
+                            (lambda (result property items)
+                              (cond
+                               ;; We already handled the double-reverse!
+                               [(eq? property '@reverse)
+                                result]
+                               [else
+                                (define reverse-map
+                                  (foldr
+                                   (lambda (item reverse-map)
+                                     (when (or (value-object? item)
+                                               (list-object? item))
+                                       (error 'json-ld-error
+                                              "invalid reverse property value"))
+                                     (define prop-member
+                                       (hash-ref reverse-map property '()))
+                                     (hash-set reverse-map property
+                                               (append prop-member (list item))))
+                                   (hash-ref result '@reverse #hasheq())
+                                   items))
+                                (hash-set result '@reverse reverse-map)]))
+                            result
+                            expanded-value)])
+                     (return result active-context)))))
             (lambda (expanded-value active-context [ignored #f]) ; ignore defined here
               (return
                (if (eq? expanded-value 'null)
