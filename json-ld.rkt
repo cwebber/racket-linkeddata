@@ -155,10 +155,19 @@ should be done.
 
 TODO: It loooks like the correct version of this is done in jsonld.py
 "
-  (if (and (string? base)
-           (not (absolute-uri? uri)))
-      (string-append base uri)
-      uri))
+  (define (convert-uri uri)
+    (match uri
+      [#f #f]
+      [(? string?) uri]
+      [(? symbol?)
+       (symbol->string uri)]))
+  (let ([base (convert-uri base)]
+        [uri (convert-uri uri)])
+    (if (and (string? base)
+             (not (absolute-uri? uri)))
+        (url->string (combine-url/relative (string->url base)
+                                           uri))
+        uri)))
 
 
 ;; @@: Should we also include ":"?
