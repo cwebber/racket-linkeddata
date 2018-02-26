@@ -1677,10 +1677,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                 ((not (equal? container "@list"))
                                  ;; 7.4.6.2.1
                                  (let ([c-i
-                                        `#hasheq((,(iri-compaction active-context
-                                                                   inverse-context
-                                                                   '@list)
-                                                  . ,compacted-item))])
+                                        (make-immutable-hasheq
+                                         `((,(iri-compaction active-context
+                                                             inverse-context
+                                                             '@list)
+                                            . ,compacted-item)))])
                                    ;; 7.4.6.2.2
                                    (if (hash-has-key? expanded-item '@index)
                                        (hash-set c-i
@@ -1767,8 +1768,9 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                   compact-arrays)
             ;; compaction algorithm epilogue
             ((? listy? result)
-             `#hasheq((,(iri-compaction active-context inverse-context '@graph)
-                       . ,result)))
+             (make-immutable-hasheq
+              `((,(iri-compaction active-context inverse-context '@graph)
+                 . ,result))))
             (result result))])
     (if (not (hash-empty? context))
         (hash-set result '@context context)
