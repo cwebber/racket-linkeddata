@@ -29,9 +29,13 @@
     (format "Compact: ~a" name))
   (define (run-test)
     (check-equal?
-     (compact-jsonld input context #:compact-arrays (hash-ref options 'compact-arrays #f))
+     (compact-jsonld input context #:compact-arrays (hash-ref options 'compactArrays #t))
      expect))
-  (display (format "~a -- ~a\n" check-name input))
+  (display (format "~a\n  purpose: ~a\n  input: jsonld-test-suite/~a\n  expect: jsonld-test-suite/~a\n"
+                   check-name
+                   (hash-ref test 'purpose "(not supplied)")
+                   (hash-ref test 'input)
+                   (hash-ref test 'expect)))
   (if catch-exceptions?
       (check-not-exn run-test check-name)
       (run-test)))
