@@ -1482,7 +1482,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
 ;;; Algorithm 8.1
 (define (compact-element active-context inverse-context active-property
-                         element [compact-arrays #t])
+                         element #:compact-arrays compact-arrays)
   (match element
     ;; sec 1
     ;; If the element is a scalar, it is already in its most compact form
@@ -1497,7 +1497,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
         (lambda (item prev)
           (define compacted-item
             (compact-element active-context inverse-context active-property
-                             item compact-arrays))
+                             item #:compact-arrays compact-arrays))
           (if (eq? compacted-item 'null)
               result
               (cons compacted-item prev)))
@@ -1557,7 +1557,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               ;; 7.2.1
               (define initial-compacted-value
                 (compact-element active-context inverse-context
-                                 '@reverse expanded-value compact-arrays))
+                                 '@reverse expanded-value
+                                 #:compact-arrays compact-arrays))
               (define boxed-result (box result))
               (define (result-box-set! key val)
                 (set-box! boxed-result
@@ -1663,7 +1664,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                           item-active-property
                                           (if (hash-has-key? expanded-item '@list)
                                               (hash-ref expanded-item '@list)
-                                              expanded-item))]
+                                              expanded-item)
+                                          #:compact-arrays compact-arrays)]
                         ;; 7.6.4
                         [compacted-item
                          (if (listy? expanded-item)
@@ -1765,7 +1767,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          [result
           (match (compact-element active-context inverse-context
                                   active-property element
-                                  compact-arrays)
+                                  #:compact-arrays compact-arrays)
             ;; compaction algorithm epilogue
             ((? listy? result)
              (make-immutable-hasheq
