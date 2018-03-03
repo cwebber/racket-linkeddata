@@ -1873,8 +1873,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              ;; 3.6 / 3.7
              [type/language-map
               (or (hash-ref container-map container #f)
-                  (let ([tlm (make-hash `([@language . ,(make-hash)]
-                                          [@type . ,(make-hash)]))])
+                  (let ([tlm (make-hash `(["@language" . ,(make-hash)]
+                                          ["@type" . ,(make-hash)]))])
                     (hash-set! container-map container tlm)
                     tlm))])
         (cond
