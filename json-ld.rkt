@@ -1414,9 +1414,14 @@ Does a multi-value-return of (expanded-iri active-context defined)"
      (expand-json-object active-context active-property element))))
 
 (define (expand-jsonld jsobj #:return-active-context [return-active-context #f]
-                       #:base-iri [base-iri 'null])
+                       #:base-iri [base-iri 'null]
+                       #:convert-jsobj? [convert-jsobj? #t])
   "Expand (v?)json using json-ld processing algorithms"
-  (let*-values ([(jsobj) (symbol-hash->string-hash jsobj)]
+  (define-values (convert-in convert-out)
+    (if convert-jsobj?
+        (values symbol-hash->string-hash string-hash->symbol-hash)
+        (values identity identity)))
+  (let*-values ([(jsobj) (convert-in jsobj)]
                 [(active-context)
                  (copy-active-context initial-active-context
                                       [base base-iri])]
@@ -1436,7 +1441,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           expanded-result
           (list expanded-result)))
     (let ([final-result
-           (string-hash->symbol-hash
+           (convert-out
             ((compose-forward final-adjustments arrayify)
              expanded-result))])
       (if return-active-context
@@ -1787,15 +1792,26 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           '#hash()  ; sec 6
           element)))))))
 
-(define (compact-jsonld jsobj context #:compact-arrays [compact-arrays #t])
+(define (compact-jsonld jsobj context
+                        #:compact-arrays [compact-arrays #t]
+                        #:convert-jsobj? [convert-jsobj? #t])
+  (define-values (convert-in convert-out)
+    (if convert-jsobj?
+        (values symbol-hash->string-hash string-hash->symbol-hash)
+        (values identity identity)))
   (let* ([jsobj
-          (symbol-hash->string-hash jsobj)]
+          (convert-in jsobj)]
+         [context
+          (convert-in context)]
          [active-context
           (process-context initial-active-context context)]
          [inverse-context
           (create-inverse-context active-context)]
          [active-property 'null]
-         [element (expand-jsonld jsobj)]
+         [element (expand-jsonld jsobj
+                                 ;; nah we already did the conversion
+                                 ;; and we want it in string-keys form
+                                 #:convert-jsobj? #f)]
          [result
           (match (compact-element active-context inverse-context
                                   active-property element
@@ -1806,7 +1822,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               `((,(iri-compaction active-context inverse-context "@graph")
                  . ,result))))
             (result result))])
-    (string-hash->symbol-hash
+    (convert-out
      (if (not (hash-empty? context))
          (hash-set result "@context" context)
          result))))
