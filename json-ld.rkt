@@ -313,11 +313,10 @@ fold instead of fold-right >:)"
 
 (define (absolute->relative-url url url-base)
   "Converts URL (a string) into a relative url against URL-BASE"
-  (let ([url url]
-        [url-base url-base])
-    (if (string-prefix? url url-base)
-        (substring url (string-length url-base))
-        url)))
+  (if (and (string? url) (string? url-base)
+           (string-prefix? url url-base))
+      (substring url (string-length url-base))
+      url))
 
 ;;; =============
 
