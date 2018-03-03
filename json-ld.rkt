@@ -1793,6 +1793,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
 (define (compact-jsonld jsobj context
                         ;; TODO: Add #:graph? and some other options
+                        #:base-iri [base-iri 'null]
                         #:compact-arrays [compact-arrays #t]
                         #:convert-jsobj? [convert-jsobj? #t])
   (define-values (convert-in convert-out)
@@ -1805,6 +1806,9 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           (convert-in context)]
          [active-context
           (process-context initial-active-context context)]
+         [active-context
+          (copy-active-context initial-active-context
+                               [base base-iri])]
          [inverse-context
           (create-inverse-context active-context)]
          [active-property 'null]
