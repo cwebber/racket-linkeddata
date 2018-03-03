@@ -1811,16 +1811,26 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                  ;; nah we already did the conversion
                                  ;; and we want it in string-keys form
                                  #:convert-jsobj? #f)]
-         [result
-          (match (compact-element active-context inverse-context
+         [result (compact-element active-context inverse-context
                                   active-property element
-                                  #:compact-arrays compact-arrays)
-            ;; compaction algorithm epilogue
-            ((? listy? result)
-             (make-immutable-hash
-              `((,(iri-compaction active-context inverse-context "@graph")
-                 . ,result))))
-            (result result))])
+                                  #:compact-arrays compact-arrays)]
+         ;; NOTE: Some of this seems not in line with what json-ld 1.0's
+         ;;   spec says.  But this is the behavior the tests seem to expect
+         ;;   and what json-ld.py does...
+         [result (if compact-arrays
+                     ;; compaction algorithm epilogue
+                     (match result
+                       ('()
+                        #hash())
+                       ((list item) item)
+                       (result result))
+                     result)]
+         ;; compaction algorithm epilogue
+         [result (if (listy? result)
+                     (make-immutable-hash
+                      `((,(iri-compaction active-context inverse-context "@graph")
+                         . ,result)))
+                     result)])
     (convert-out
      (if (not (hash-empty? context))
          (hash-set result "@context" context)
