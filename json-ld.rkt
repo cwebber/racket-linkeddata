@@ -1792,6 +1792,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           element)))))))
 
 (define (compact-jsonld jsobj context
+                        ;; TODO: Add #:graph? and some other options
                         #:compact-arrays [compact-arrays #t]
                         #:convert-jsobj? [convert-jsobj? #t])
   (define-values (convert-in convert-out)
@@ -1818,7 +1819,6 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;;   spec says.  But this is the behavior the tests seem to expect
          ;;   and what json-ld.py does...
          [result (if compact-arrays
-                     ;; compaction algorithm epilogue
                      (match result
                        ('()
                         #hash())
