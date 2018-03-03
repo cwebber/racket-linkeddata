@@ -19,6 +19,9 @@
 (require json
          net/url)
 
+(module+ test
+  (require rackunit))
+
 ;; Special meaning in <active-context>
 (define undefined 'undefined)
 
@@ -349,6 +352,63 @@ fold instead of fold-right >:)"
         url)))
 
 ;;; =============
+
+
+;;; Utilities to convert between stringy hashes and symboly hashes
+;;;
+;;; Why have these?  Because in json-ld we have to shove keys to values
+;;; and values to keys all over the place.  If keys are symbols and values
+;;; are strings, this becomes error prone.  Best to just do the conversion
+;;; up front.
+
+(define (symbol-hash->string-hash obj)
+  (match obj
+   ;; Return scalar values and null values as-is
+   ((or (? scalar?) 'null)
+    obj)
+   ((list obj-list ...)
+    (map symbol-hash->string-hash obj))
+   ((? hash?)
+    (sequence-fold
+     (lambda (result key val)
+       (hash-set result (symbol->string key)
+                 (symbol-hash->string-hash val)))
+     #hash() obj))))
+
+(define (string-hash->symbol-hash obj)
+  (match obj
+   ;; Return scalar values and null values as-is
+   ((or (? scalar?) 'null)
+    obj)
+   ((list obj-list ...)
+    (map string-hash->symbol-hash obj))
+   ((? hash?)
+    (sequence-fold
+     (lambda (result key val)
+       (hash-set result (string->symbol key)
+                 (string-hash->symbol-hash val)))
+     #hasheq() obj))))
+
+
+(module+ test
+  (define symbol-style-hash
+    '#hasheq((name . "monkey")
+             (eats . [#hasheq((name . "banana")
+                              (cost . 1.50))])
+             (noise . "ooh-ooh")
+             (lifespan . 20)
+             (this-is-null . null)))
+  (define string-style-hash
+    '#hash(("name" . "monkey")
+           ("eats" . [#hash(("name" . "banana")
+                            ("cost" . 1.50))])
+           ("noise" . "ooh-ooh")
+           ("lifespan" . 20)
+           ("this-is-null" . null)))
+  (check-equal? string-style-hash
+                (symbol-hash->string-hash symbol-style-hash))
+  (check-equal? symbol-style-hash
+                (string-hash->symbol-hash string-style-hash)))
 
 
 
