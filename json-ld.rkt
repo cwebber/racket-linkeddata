@@ -1517,7 +1517,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
 ;;; Algorithm 8.1
 (define (compact-element active-context inverse-context active-property
-                         element #:compact-arrays compact-arrays)
+                         element #:compact-arrays? compact-arrays?)
   (match element
     ;; sec 1
     ;; If the element is a scalar, it is already in its most compact form
@@ -1532,7 +1532,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
         (lambda (item prev)
           (define compacted-item
             (compact-element active-context inverse-context active-property
-                             item #:compact-arrays compact-arrays))
+                             item #:compact-arrays? compact-arrays?))
           (if (eq? compacted-item 'null)
               result
               (cons compacted-item prev)))
@@ -1542,7 +1542,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
      (if (and (= (length result) 1)
               (not (active-context-container-mapping active-property
                                                      active-context))
-              compact-arrays)
+              compact-arrays?)
          (first result)
          result))
     ;; sec 3
@@ -1593,7 +1593,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               (define initial-compacted-value
                 (compact-element active-context inverse-context
                                  "@reverse" expanded-value
-                                 #:compact-arrays compact-arrays))
+                                 #:compact-arrays? compact-arrays?))
               (define boxed-result (box result))
               (define (result-box-set! key val)
                 (set-box! boxed-result
@@ -1611,7 +1611,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                                      property
                                                      active-context)
                                                     "@set")
-                                            (not compact-arrays))
+                                            (not compact-arrays?))
                                         (not (listy? value)))
                                    (list value)
                                    value)])
@@ -1699,7 +1699,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                           (if (hash-has-key? expanded-item "@list")
                                               (hash-ref expanded-item "@list")
                                               expanded-item)
-                                          #:compact-arrays compact-arrays)]
+                                          #:compact-arrays? compact-arrays?)]
                         ;; 7.6.4
                         [compacted-item
                          (if (listy? expanded-item)
@@ -1766,7 +1766,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                          (hash-set result item-active-property map-object))
                        ;; 7.6.6
                        (let ([compacted-item
-                              (if (and (or (not compact-arrays)
+                              (if (and (or (not compact-arrays?)
                                            (member container '("@set" "@list"))
                                            (member expanded-property '("@list" "@graph")))
                                        (not (listy? compacted-item)))
@@ -1794,7 +1794,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 (define (compact-jsonld jsobj context
                         ;; TODO: Add #:graph? and some other options
                         #:base-iri [base-iri 'null]
-                        #:compact-arrays [compact-arrays #t]
+                        #:compact-arrays? [compact-arrays? #t]
                         #:convert-jsobj? [convert-jsobj? #t])
   (define-values (convert-in convert-out)
     (if convert-jsobj?
@@ -1818,11 +1818,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                  #:convert-jsobj? #f)]
          [result (compact-element active-context inverse-context
                                   active-property element
-                                  #:compact-arrays compact-arrays)]
+                                  #:compact-arrays? compact-arrays?)]
          ;; NOTE: Some of this seems not in line with what json-ld 1.0's
          ;;   spec says.  But this is the behavior the tests seem to expect
          ;;   and what json-ld.py does...
-         [result (if compact-arrays
+         [result (if compact-arrays?
                      (match result
                        ('()
                         #hash())
