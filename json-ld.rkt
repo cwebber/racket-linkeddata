@@ -2011,7 +2011,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               [type/language "@language"]
               [type/language-value "@null"])
          ;; 2.4
-         (when (and (hash? value)
+         (when (and (jsobj? value)
                     (hash-has-key? value "@index"))
            (set! containers (cons "@index" containers)))
          (cond
@@ -2021,7 +2021,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
            (set! type/language-value "@reverse")
            (set! containers (cons "@set" containers)))
           ;; 2.6
-          ((hash-has-key? value "@list")
+          ((and (jsobj? value) (hash-has-key? value "@list"))
            ;; 2.6.1
            (when (not (hash-has-key? value "@index"))
              (set! containers (cons "@set" containers)))
@@ -2083,7 +2083,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                  (set! type/language common-language))))
           ;; 2.7
           (else
-           (if (hash-has-key? value "@value")
+           (if (and (jsobj? value) (hash-has-key? value "@value"))
                ;; 2.7.1
                (cond
                 ;; 2.7.1.1
@@ -2112,6 +2112,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              (set! preferred-values (cons "@reverse" preferred-values)))
            ;; 2.12
            (if (and (member type/language-value '("@id" "@reverse"))
+                    (jsobj? value)
                     (hash-has-key? value "@id"))
                ;; 2.12
                (if (equal?
