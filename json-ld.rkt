@@ -1569,7 +1569,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                     ;; 7.1.1
                     (iri-compaction active-context inverse-context
                                     expanded-value
-                                    (equal? expanded-property "@type"))
+                                    #:vocab? (equal? expanded-property "@type"))
                     ;; 7.1.2
                     (let ([intermediate-cv
                            (map
@@ -1577,7 +1577,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                               (iri-compaction active-context
                                               inverse-context
                                               expanded-type
-                                              #t))
+                                              #:vocab? #t))
                             expanded-value)])
                       (if (= (length intermediate-cv) 1)
                           (first intermediate-cv)
@@ -1585,7 +1585,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               ;; 7.1.3
               (define alias
                 (iri-compaction active-context inverse-context
-                                expanded-property #t))
+                                expanded-property
+                                #:vocab? #t))
               (hash-set result alias compacted-value))
              ;; 7.2
              ((equal? expanded-property "@reverse")
@@ -1635,7 +1636,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               (when (not (hash-empty? compacted-value))
                 (let (;; 7.2.3.1
                       [alias (iri-compaction active-context inverse-context
-                                             "@reverse" #t)])
+                                             "@reverse" #:vocab? #t)])
                   (result-box-set! alias compacted-value)))
               (unbox result))
              
@@ -1651,7 +1652,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              ((member expanded-property '("@index" "@value" "@language"))
               (let (;; 7.4.1
                     [alias (iri-compaction active-context inverse-context
-                                           expanded-property #t)])
+                                           expanded-property #:vocab? #t)])
                 (hash-set result alias expanded-value)))
 
              ;; 7.5
@@ -1663,8 +1664,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              ((null? expanded-value)
               (let ([item-active-property
                      (iri-compaction active-context inverse-context
-                                     expanded-property expanded-value
-                                     #t inside-reverse)])
+                                     expanded-property
+                                     #:value expanded-value
+                                     #:vocab? #t
+                                     #:reverse? inside-reverse)])
                 (if (not (hash-has-key? result item-active-property))
                     ;; 7.5.2
                     (hash-set result item-active-property '())
@@ -1684,8 +1687,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                  (let* (;; 7.6.1
                         [item-active-property
                          (iri-compaction active-context inverse-context
-                                         expanded-property expanded-item
-                                         #t inside-reverse)]
+                                         expanded-property
+                                         #:value expanded-item
+                                         #:vocab? #t
+                                         #:reverse? inside-reverse)]
                         ;; 7.6.2
                         [container
                          (or (active-context-container-mapping
@@ -1714,6 +1719,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                  ;; 7.6.4.2.1 
                                  (let ([c-i
                                         (make-immutable-hash
+                                         ;; FIXME: Is this right?  The
+                                         ;; algorithm is very unclear what value it means
+                                         ;; #:value compacted-item
+                                         ;; See: https://github.com/json-ld/json-ld.org/issues/607
                                          `((,(iri-compaction active-context
                                                              inverse-context
                                                              "@list")
@@ -1721,6 +1730,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                    ;; 7.6.4.2.2
                                    (if (hash-has-key? expanded-item "@index")
                                        (hash-set c-i
+                                                 ;; FIXME: Same issue as above
                                                  (iri-compaction active-context
                                                                  inverse-context
                                                                  "@index")
@@ -1982,7 +1992,9 @@ Does a multi-value-return of (expanded-iri active-context defined)"
    (else value)))
 
 (define (iri-compaction active-context inverse-context iri
-                        [value #f] [vocab? #f] [reverse? #f])
+                        #:value [value #f]
+                        #:vocab? [vocab? #f]
+                        #:reverse? [reverse? #f])
   (call/ec
    (lambda (return)
      (cond
@@ -2104,10 +2116,13 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                ;; 2.12
                (if (equal?
                     (active-context-iri-mapping
+                     ;; TODO: in json-ld 1.0 (but not drafts) it says
+                     ;;   #:document-relative should be #t
+                     ;;   but that doesn't exist for iri-compaction?
                      (iri-compaction active-context
                                      inverse-context
                                      (hash-ref value "@id")
-                                     #t #t #t)
+                                     #:vocab? #t)
                      active-context)
                     (hash-ref value "@id"))
                    ;; @@: Note that these look backwards because lisp lists :P
