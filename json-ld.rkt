@@ -1992,7 +1992,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
    (else value)))
 
 (define (iri-compaction active-context inverse-context iri
-                        #:value [value #f]
+                        #:value [value 'null]
                         #:vocab? [vocab? #f]
                         #:reverse? [reverse? #f])
   (call/ec
