@@ -1711,14 +1711,14 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                ;; 7.6.4.2
                                (cond
                                 ((not (equal? container "@list"))
-                                 ;; 7.4.6.2.1
+                                 ;; 7.6.4.2.1 
                                  (let ([c-i
                                         (make-immutable-hash
                                          `((,(iri-compaction active-context
                                                              inverse-context
                                                              "@list")
                                             . ,compacted-item)))])
-                                   ;; 7.4.6.2.2
+                                   ;; 7.6.4.2.2
                                    (if (hash-has-key? expanded-item "@index")
                                        (hash-set c-i
                                                  (iri-compaction active-context
