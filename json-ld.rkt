@@ -1807,8 +1807,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          [active-context
           (process-context initial-active-context context)]
          [active-context
-          (copy-active-context initial-active-context
-                               [base base-iri])]
+          (copy-active-context active-context [base base-iri])]
          [inverse-context
           (create-inverse-context active-context)]
          [active-property 'null]
