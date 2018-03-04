@@ -666,7 +666,7 @@ remaining context information to process from local-context"
                               ;; 11.4
                               (%definition-handle-container-reverse
                                definition)
-                              'reverse #t)))
+                              "@reverse" #t)))
                        ;; return early with new active context
                        ;; w/ term definition and defined
                        (return
