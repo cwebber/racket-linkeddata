@@ -694,7 +694,7 @@ remaining context information to process from local-context"
 
               ;; 12
               (define (definition-set-reverse-to-false definition active-context defined)
-                (values (hash-set definition 'reverse #f) active-context defined))
+                (values (hash-set definition "@reverse" #f) active-context defined))
 
               ;; This one is an adjustment deluxe, it does a significant
               ;; amount of adjustments to the definition and builds
@@ -1251,7 +1251,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           ;; 7.10
           ;; Looks like a reverse property?
           ((and (force term-mapping)
-                (jsobj-ref (cdr (force term-mapping)) 'reverse))
+                (jsobj-ref (cdr (force term-mapping)) "@reverse"))
            (let* ((result (if (jsobj-assoc result "@reverse")
                               result
                               (hash-set result "@reverse" '())))
