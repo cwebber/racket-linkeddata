@@ -1373,7 +1373,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;; sec 12
          (define (adjust-result-3 result)
            ;; Graph adjustments...
-           (if (member active-property '(null "@graph"))
+           (if (and (jsobj? result)
+                    (member active-property '(null "@graph")))
                ;; drop free-floating values
                (cond ((or (eqv? (hash-count result) 0)
                           (jsobj-assoc result "@value")
