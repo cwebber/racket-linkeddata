@@ -50,7 +50,7 @@
               (run-compact-test test #:catch-exceptions? catch-exceptions?))
             (hash-ref compact-manifest 'sequence)))
 
-(module+ main
+(module+ test
   (run-compact-tests))
 
 
@@ -86,5 +86,5 @@
               (run-expand-test test #:catch-exceptions? catch-exceptions?))
             (hash-ref expand-manifest 'sequence)))
 
-(module+ main
+(module+ test
   (run-expand-tests))
