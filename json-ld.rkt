@@ -2051,21 +2051,21 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                           (set! item-language "@null")))
                         (set! item-type "@id"))
                     (cond
-                     ;; 7.6.4.4
+                     ;; 2.6.4.4
                      ((eq? common-language 'null)
                       (set! common-language item-language))
-                     ;; 7.6.4.5
+                     ;; 2.6.4.5
                      ((and (not (hash-has-key? item-language common-language))
                            (hash-has-key? item "@value"))
                       (set! common-language "@none")))
                     (cond
-                     ;; 7.6.4.6
+                     ;; 2.6.4.6
                      ((eq? common-type 'null)
                       (set! common-type item-type))
-                     ;; 7.6.4.7
+                     ;; 2.6.4.7
                      ((not (equal? item-type common-type))
                       (set! common-type "@none")))
-                    ;; 7.6.4.8
+                    ;; 2.6.4.8
                     (when (and (equal? common-language "@none")
                                (equal? common-type "@none"))
                       (escape-loop))))))
