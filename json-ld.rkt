@@ -2169,26 +2169,29 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              'skip-me)
             ;; 5.2
             ((or (eq? term-definition 'null)
-                 (let ([iri-mapping (hash-ref term-definition "@id")])
+                 (let ([iri-mapping (hash-ref term-definition "@id" #f)])
                    (or (equal? iri-mapping iri)
                        (and iri iri-mapping (not (string-prefix? iri iri-mapping))))))
              'skip-me)
             (else
              (let* ([iri-mapping
-                     (hash-ref term-definition "@id")]
+                     (hash-ref term-definition "@id" #f)]
                     ;; 5.3
-                    [candidate (string-append term-str ":"
-                                              (substring iri (string-length iri-mapping)))])
+                    [candidate (and iri-mapping
+                                    (string-append term-str ":"
+                                                   (substring iri (string-length iri-mapping))))])
                ;; 5.4
                ;; the grouping of ands and ors is really unclear here to me
-               (when (or (and (or (eq? compact-iri 'null)
+               (when (or (and candidate
+                              (or (eq? compact-iri 'null)
                                   (< (string-length candidate)
                                      (string-length compact-iri))
                                   (and (= (string-length candidate)
                                           (string-length compact-iri))
                                        (string<? candidate compact-iri)))
                               (not (active-context-terms-assoc candidate active-context)))
-                         (or (and (equal? iri-mapping iri)
+                         (or (and candidate
+                                  (equal? iri-mapping iri)
                                   (eq? value 'null))))
                  (set! compact-iri candidate)))))))
        ;; 6
