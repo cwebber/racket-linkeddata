@@ -1938,7 +1938,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               (hash-set! language-map "@none" term))
             (let ([type-map (hash-ref type/language-map "@type")])
               (when (not (hash-has-key? type-map "@none"))
-                (hash-set! language-map "@none" term)))))))))
+                (hash-set! type-map "@none" term)))))))))
   result)
 
 (define (compact-value active-context inverse-context active-property value)
