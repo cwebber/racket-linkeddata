@@ -1767,7 +1767,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                               [map-object
                                (if (not (hash-has-key? map-object map-key))
                                    (hash-set map-object map-key compacted-item)
-                                   (hash-set map-object
+                                   (hash-set map-object map-key
                                              (append
                                               (match (hash-ref map-object map-key)
                                                 ((list items ...)
