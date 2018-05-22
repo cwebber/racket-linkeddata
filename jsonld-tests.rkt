@@ -58,9 +58,6 @@
           (hash-ref compact-manifest 'sequence))
    #:catch-exceptions? #f))
 
-(module+ test
-  (run-compact-tests))
-
 
 (define (run-expand-test test #:catch-exceptions? [catch-exceptions? #t])
   (define name (hash-ref test 'name))
@@ -103,4 +100,5 @@
    #:catch-exceptions? #f))
 
 (module+ test
-  (run-expand-tests))
+  (run-expand-tests)
+  (run-compact-tests))
