@@ -1683,7 +1683,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
              ;; 7.6
              (else
-              (foldr
+              (foldl
                (lambda (expanded-item result)
                  (let* (;; 7.6.1
                         [item-active-property
