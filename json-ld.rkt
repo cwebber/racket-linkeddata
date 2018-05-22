@@ -2081,7 +2081,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                    (set! type/language "@type")
                    (set! type/language-value common-type))
                  ;; 2.6.8
-                 (set! type/language common-language))))
+                 (set! type/language-value common-language))))
           ;; 2.7
           (else
            (if (and (jsobj? value) (hash-has-key? value "@value"))
