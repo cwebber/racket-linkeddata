@@ -79,7 +79,12 @@
                     (hash-ref options 'base
                               (string-append
                                (hash-ref expand-manifest 'baseIri)
-                               (hash-ref test 'input))))
+                               (hash-ref test 'input)))
+                    #:expand-context
+                    (let ([ec-option (hash-ref options 'expandContext #f)])
+                      (and ec-option
+                           (hash-ref (read-tests-json-file ec-option)
+                                     '@context))))
      expect))
   (display (format "~a\n  purpose: ~a\n  input: jsonld-test-suite/~a\n  expect: jsonld-test-suite/~a\n"
                    check-name
