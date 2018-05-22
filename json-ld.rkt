@@ -1846,7 +1846,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                          . ,result)))
                      result)])
     (convert-out
-     (if (not (hash-empty? context))
+     (if (not (and (hash? context) (hash-empty? context)))
          (hash-set result "@context" context)
          result))))
 
