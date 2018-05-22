@@ -1535,7 +1535,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
             (compact-element active-context inverse-context active-property
                              item #:compact-arrays? compact-arrays?))
           (if (eq? compacted-item 'null)
-              result
+              prev
               (cons compacted-item prev)))
         '()
         items))
