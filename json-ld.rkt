@@ -1708,7 +1708,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                           #:compact-arrays? compact-arrays?)]
                         ;; 7.6.4
                         [compacted-item
-                         (if (listy? expanded-item)
+                         (if (list-object? expanded-item)
                              (let* (;; 7.6.4.1
                                     [compacted-item
                                      (if (listy? compacted-item)
