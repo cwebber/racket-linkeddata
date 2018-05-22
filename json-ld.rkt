@@ -2055,7 +2055,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      ((eq? common-language 'null)
                       (set! common-language item-language))
                      ;; 2.6.4.5
-                     ((and (not (hash-has-key? item-language common-language))
+                     ((and (not (equal? item-language common-language))
                            (hash-has-key? item "@value"))
                       (set! common-language "@none")))
                     (cond
