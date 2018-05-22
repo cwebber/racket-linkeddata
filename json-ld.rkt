@@ -1639,7 +1639,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                       [alias (iri-compaction active-context inverse-context
                                              "@reverse" #:vocab? #t)])
                   (result-box-set! alias compacted-value)))
-              (unbox result))
+              (unbox boxed-result))
              
              ;; 7.3
              ((and (equal? expanded-property "@index")
