@@ -50,6 +50,14 @@
               (run-compact-test test #:catch-exceptions? catch-exceptions?))
             (hash-ref compact-manifest 'sequence)))
 
+(define (run-compact-test-named name)
+  (run-compact-test
+   (findf (lambda (td)
+            (equal? (hash-ref td '@id #f)
+                    (format (string-append "#t" name))))
+          (hash-ref compact-manifest 'sequence))
+   #:catch-exceptions? #f))
+
 (module+ test
   (run-compact-tests))
 
@@ -85,6 +93,14 @@
   (for-each (lambda (test)
               (run-expand-test test #:catch-exceptions? catch-exceptions?))
             (hash-ref expand-manifest 'sequence)))
+
+(define (run-expand-test-named name)
+  (run-expand-test
+   (findf (lambda (td)
+            (equal? (hash-ref td '@id #f)
+                    (format (string-append "#t" name))))
+          (hash-ref expand-manifest 'sequence))
+   #:catch-exceptions? #f))
 
 (module+ test
   (run-expand-tests))
