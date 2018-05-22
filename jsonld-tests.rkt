@@ -78,7 +78,7 @@
                     #:base-iri
                     (hash-ref options 'base
                               (string-append
-                               (hash-ref compact-manifest 'baseIri)
+                               (hash-ref expand-manifest 'baseIri)
                                (hash-ref test 'input))))
      expect))
   (display (format "~a\n  purpose: ~a\n  input: jsonld-test-suite/~a\n  expect: jsonld-test-suite/~a\n"
