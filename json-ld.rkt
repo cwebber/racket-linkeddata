@@ -2341,14 +2341,19 @@ Does a multi-value-return of (expanded-iri active-context defined)"
         element "@type"
         ;; Replace all blank nodes with freshly labeled blank nodes where
         ;; appropriate
-        (for/fold ([result '()]
-                   #:result (reverse result))
-            ([item (hash-ref element "@type")])
-          ;; 3.1
-          (cons (if (blank-node? item)
+        (match (hash-ref element "@type")
+          [(list items ...)
+           (for/fold ([result '()]
+                      #:result (reverse result))
+               ([item items])
+             ;; 3.1
+             (cons (if (blank-node? item)
+                       (blank-node-issuer item)
+                       item)
+                   result))]
+          [item (if (blank-node? item)
                     (blank-node-issuer item)
-                    item)
-                result))))
+                    item)])))
      (cond
       ;; 4
       [(hash-has-key? element "@value")
