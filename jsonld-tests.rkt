@@ -14,6 +14,9 @@
 (define expand-manifest
   (read-tests-json-file "expand-manifest.jsonld"))
 
+(define flatten-manifest
+  (read-tests-json-file "flatten-manifest.jsonld"))
+
 
 (define (run-compact-test test #:catch-exceptions? [catch-exceptions? #t])
   (define name (hash-ref test 'name))
@@ -108,6 +111,51 @@
           (hash-ref expand-manifest 'sequence))
    #:catch-exceptions? #f))
 
+
+
+(define (run-flatten-test test #:catch-exceptions? [catch-exceptions? #t])
+  (define name (hash-ref test 'name))
+  (define input
+    (read-tests-json-file (hash-ref test 'input)))
+  (define expect
+    (read-tests-json-file (hash-ref test 'expect)))
+  (define options
+    (hash-ref test 'option '#hasheq()))
+  (define check-name
+    (format "Flatten: ~a" name))
+  (define (run-test)
+    (check-equal?
+     ;; FIXME: Add other options from options
+     (flatten-jsonld input (if (hash-has-key? test 'context)
+                               (hash-ref test 'context)
+                               'null))
+     expect))
+  (display (format "~a\n  purpose: ~a\n  input: jsonld-test-suite/~a\n  context: ~a\n  expect: jsonld-test-suite/~a\n"
+                   check-name
+                   (hash-ref test 'purpose "(not supplied)")
+                   (hash-ref test 'input)
+                   (if (hash-has-key? test 'context)
+                       (string-append "jsonld-test-suite/" (hash-ref test 'context))
+                       "(N/A)")
+                   (hash-ref test 'expect)))
+  (if catch-exceptions?
+      (check-not-exn run-test check-name)
+      (run-test)))
+
+(define (run-flatten-tests #:catch-exceptions? [catch-exceptions? #t])
+  (for-each (lambda (test)
+              (run-flatten-test test #:catch-exceptions? catch-exceptions?))
+            (hash-ref flatten-manifest 'sequence)))
+
+(define (run-flatten-test-named name)
+  (run-flatten-test
+   (findf (lambda (td)
+            (equal? (hash-ref td '@id #f)
+                    (format (string-append "#t" name))))
+          (hash-ref flatten-manifest 'sequence))
+   #:catch-exceptions? #f))
+
 (module+ test
   (run-expand-tests)
-  (run-compact-tests))
+  (run-compact-tests)
+  (run-flatten-tests))
