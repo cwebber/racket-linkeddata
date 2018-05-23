@@ -2359,7 +2359,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                ;; 4.1.2
                (maybe-add-member! node active-property element))
            ;; 4.2
-           (hash-append-to-array! list "@list" element))]
+           (hash-append-to-array! list_ "@list" element))]
       ;; 5
       [(hash-has-key? element "@list")
        (define result
@@ -2402,7 +2402,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              ;; 6.6.1
              (define reference
                (make-hash `(("@id" . ,id))))
-             (if (eq? list 'null)
+             (if (eq? list_ 'null)
                  ;; 6.6.2
                  (if (not (hash-has-key? node active-property))
                      ;; 6.6.2.1
@@ -2410,7 +2410,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      ;; 6.6.2.2
                      (maybe-add-member! node active-property reference))
                  ;; 6.6.3
-                 (hash-append-to-array! list "@list" element))))
+                 (hash-append-to-array! list_ "@list" element))))
        ;; 6.7
        (when (hash-has-key? element "@type")
          (for ([item (hash-ref element "@type")])
