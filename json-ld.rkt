@@ -2413,6 +2413,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                  (hash-append-to-array! list_ "@list" element))))
        ;; 6.7
        (when (hash-has-key? element "@type")
+         (when (not (hash-has-key? node "@type"))
+           (hash-set! node "@type" '()))
          (for ([item (hash-ref element "@type")])
            (maybe-add-member! node "@type" item))
          (hash-remove! element "@type"))
