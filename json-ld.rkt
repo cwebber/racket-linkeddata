@@ -2244,7 +2244,9 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 (provide expand-jsonld compact-jsonld)
 
 (define (flatten-jsonld element [context 'null]
-                        #:convert-jsobj? [convert-jsobj? #t])
+                        #:convert-jsobj? [convert-jsobj? #t]
+                        #:base-iri [base-iri 'null]
+                        #:expand-context [expand-context #f])
   (define-values (convert-in convert-out)
     (maybe-converters convert-jsobj? #:mutable? #t))
   (define blank-node-issuer
@@ -2260,7 +2262,9 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           result
           ;; otherwise, add it
           (cons node result))))
-  (let* ([element (expand-jsonld element)]
+  (let* ([element (expand-jsonld element
+                                 #:base-iri base-iri
+                                 #:expand-context expand-context)]
          [element (convert-in element)]
          ;; 1
          [node-map (make-hash `(("@default" . ,(make-hash))))])
