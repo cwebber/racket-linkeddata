@@ -328,19 +328,29 @@ fold instead of fold-right >:)"
 ;;; are strings, this becomes error prone.  Best to just do the conversion
 ;;; up front.
 
-(define (symbol-hash->string-hash obj)
+(define (symbol-hash->string-hash obj #:mutable? [mutable? #f])
   (match obj
    ;; Return scalar values and null values as-is
    ((or (? scalar?) 'null)
     obj)
    ((list obj-list ...)
-    (map symbol-hash->string-hash obj))
+    (map (lambda (obj)
+           (symbol-hash->string-hash obj #:mutable? mutable?))
+         obj))
    ((? hash?)
-    (sequence-fold
-     (lambda (result key val)
-       (hash-set result (symbol->string key)
-                 (symbol-hash->string-hash val)))
-     #hash() obj))))
+    (if mutable?
+        (let ([ht (make-hash)])
+          (for ([(key val) obj])
+            (hash-set! ht (symbol->string key)
+                       (symbol-hash->string-hash
+                        val #:mutable? mutable?)))
+          ht)
+        (sequence-fold
+         (lambda (result key val)
+           (hash-set result (symbol->string key)
+                     (symbol-hash->string-hash
+                      val #:mutable? mutable?)))
+         #hash() obj)))))
 
 (define (string-hash->symbol-hash obj)
   (match obj
@@ -377,9 +387,11 @@ fold instead of fold-right >:)"
   (check-equal? (string-hash->symbol-hash string-style-hash)
                 symbol-style-hash))
 
-(define (maybe-converters convert-jsobj?)
+(define (maybe-converters convert-jsobj? #:mutable? [mutable? #f])
   (if convert-jsobj?
-      (values symbol-hash->string-hash string-hash->symbol-hash)
+      (values (lambda (obj)
+                (symbol-hash->string-hash obj #:mutable? mutable?))
+              string-hash->symbol-hash)
       (values identity identity)))
 
 
@@ -2234,13 +2246,13 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 (define (flatten-jsonld element [context 'null]
                         #:convert-jsobj? [convert-jsobj? #t])
   (define-values (convert-in convert-out)
-    (maybe-converters convert-jsobj?))
+    (maybe-converters convert-jsobj? #:mutable? #t))
   (define blank-node-issuer
     (make-blank-node-issuer))
   (define (sorted-graph-items-with-more-than-id graph)
     (for/fold ([result '()]
                #:result (reverse result))
-        ([key (sort (hash-keys graph))])
+        ([key (sort (hash-keys graph) string<?)])
       (define node (hash-ref graph key))
       (if (and (= (hash-count node) 1)
                (hash-has-key? node "@id"))
