@@ -2449,7 +2449,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                #:active-graph id)
          (hash-remove! element "@graph"))
        ;; 6.11
-       (for ([property (sort (hash-keys element))])
+       (for ([property (sort (hash-keys element) string<?)])
          (define value (hash-ref element property))
          ;; 6.11.1
          (when (blank-node? property)
