@@ -2320,7 +2320,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                  (append cur-members (list value)))))
   (match element
     ;; 1
-    [(? pair?)
+    [(? listy?)
      (for/list ([item element])
        (node-map-generation! item node-map blank-node-issuer
                              #:active-graph active-graph
