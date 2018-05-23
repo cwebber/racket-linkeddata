@@ -2285,21 +2285,22 @@ Does a multi-value-return of (expanded-iri active-context defined)"
     ;; 5, 6
     (define flattened
       (sorted-graph-items-with-more-than-id default-graph))
-    (if (eq? context 'null)
-        ;; 7
-        flattened
-        ;; 8
-        (let* ([compact-flat
-                (compact-jsonld flattened context
-                                #:convert-jsobj? #f)]
-               [non-id-graph-members
-                (filter (lambda (x) (not (member x '("@context" "@graph"))))
-                        (hash-keys compact-flat))])
-          (when (not (= 0 non-id-graph-members))
-            ;; This is a determinism issue
-            (error 'json-ld-error
-                   "Compacted flattened document has more keys than @context and @graph"))
-          compact-flat))))
+    (convert-out
+     (if (eq? context 'null)
+         ;; 7
+         flattened
+         ;; 8
+         (let* ([compact-flat
+                 (compact-jsonld flattened context
+                                 #:convert-jsobj? #f)]
+                [non-id-graph-members
+                 (filter (lambda (x) (not (member x '("@context" "@graph"))))
+                         (hash-keys compact-flat))])
+           (when (not (= 0 non-id-graph-members))
+             ;; This is a determinism issue
+             (error 'json-ld-error
+                    "Compacted flattened document has more keys than @context and @graph"))
+           compact-flat)))))
 
 (provide flatten-jsonld)
 
