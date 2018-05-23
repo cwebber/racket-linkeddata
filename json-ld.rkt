@@ -377,6 +377,10 @@ fold instead of fold-right >:)"
   (check-equal? (string-hash->symbol-hash string-style-hash)
                 symbol-style-hash))
 
+(define (maybe-converters convert-jsobj?)
+  (if convert-jsobj?
+      (values symbol-hash->string-hash string-hash->symbol-hash)
+      (values identity identity)))
 
 
 ;; Algorithm 6.1
@@ -1419,9 +1423,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                        #:convert-jsobj? [convert-jsobj? #t])
   "Expand (v?)json using json-ld processing algorithms"
   (define-values (convert-in convert-out)
-    (if convert-jsobj?
-        (values symbol-hash->string-hash string-hash->symbol-hash)
-        (values identity identity)))
+    (maybe-converters convert-jsobj?))
   (let*-values ([(jsobj) (convert-in jsobj)]
                 [(active-context)
                  (copy-active-context
@@ -1814,9 +1816,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                         #:compact-arrays? [compact-arrays? #t]
                         #:convert-jsobj? [convert-jsobj? #t])
   (define-values (convert-in convert-out)
-    (if convert-jsobj?
-        (values symbol-hash->string-hash string-hash->symbol-hash)
-        (values identity identity)))
+    (maybe-converters convert-jsobj?))
   (let* ([jsobj
           (convert-in jsobj)]
          [context
@@ -2230,3 +2230,243 @@ Does a multi-value-return of (expanded-iri active-context defined)"
      'null)))
 
 (provide expand-jsonld compact-jsonld)
+
+(define (flatten-jsonld element [context 'null]
+                        #:convert-jsobj? [convert-jsobj? #t])
+  (define-values (convert-in convert-out)
+    (maybe-converters convert-jsobj?))
+  (define blank-node-issuer
+    (make-blank-node-issuer))
+  (define (sorted-graph-items-with-more-than-id graph)
+    (for/fold ([result '()]
+               #:result (reverse result))
+        ([key (sort (hash-keys graph))])
+      (define node (hash-ref graph key))
+      (if (and (= (hash-count node) 1)
+               (hash-has-key? node "@id"))
+          ;; only member of node is id, so don't add it
+          result
+          ;; otherwise, add it
+          (cons node result))))
+  (let ([element (convert-in element)]
+        ;; 1
+        [node-map (make-hash `(("@default" . ,(make-hash))))])
+    ;; 2
+    (node-map-generation! element node-map blank-node-issuer)
+    ;; 3
+    (define default-graph
+      (hash-ref node-map "@default"))
+    ;; 4
+    (for ([(graph-name graph) node-map])
+      ;; 4.1
+      (unless (equal? graph-name "@default")
+        (unless (hash-has-key? default-graph graph-name)
+          (hash-set! default-graph graph-name
+                     (make-hash `(("@id" . ,graph-name)))))
+        ;; 4.2
+        (define entry
+          (hash-ref default-graph graph-name))
+        ;; 4.4
+        (hash-set! entry "@graph"
+                   (sorted-graph-items-with-more-than-id graph))))
+    ;; 5, 6
+    (define flattened
+      (sorted-graph-items-with-more-than-id default-graph))
+    (if (eq? context 'null)
+        ;; 7
+        flattened
+        ;; 8
+        (let* ([compact-flat
+                (compact-jsonld flattened context
+                                #:convert-jsobj? #f)]
+               [non-id-graph-members
+                (filter (lambda (x) (not (member x '("@context" "@graph"))))
+                        (hash-keys compact-flat))])
+          (when (not (= 0 non-id-graph-members))
+            ;; This is a determinism issue
+            (error 'json-ld-error
+                   "Compacted flattened document has more keys than @context and @graph"))
+          compact-flat))))
+
+(provide flatten-jsonld)
+
+(define (node-map-generation! element node-map blank-node-issuer
+                              #:active-graph [active-graph "@default"]
+                              #:active-subject [active-subject 'null]
+                              #:active-property [active-property 'null]
+                              #:list [list_ 'null])
+  (define (hash-append-to-array! ht key value)
+    (hash-set! ht key
+               (append (hash-ref ht key) (list value))))
+  (define (maybe-add-member! ht key value)
+    (define cur-members
+      (hash-ref ht key))
+    (when (not (member value cur-members))
+      (hash-set! ht key
+                 (append cur-members (list value)))))
+  (match element
+    ;; 1
+    [(? pair?)
+     (for/list ([item element])
+       (node-map-generation! item node-map blank-node-issuer
+                             #:active-graph active-graph
+                             #:active-subject active-subject
+                             #:active-property active-property
+                             #:list list_))]
+    ;; 2
+    [(? hash?)
+     (define graph
+       (hash-ref node-map active-graph))
+     (define node
+       (if (eq? active-subject 'null)
+           'null
+           (hash-ref graph active-subject)))
+     ;; 3
+     (when (hash-has-key? element "@type")
+       (hash-set!
+        element "@type"
+        ;; Replace all blank nodes with freshly labeled blank nodes where
+        ;; appropriate
+        (for/fold ([result '()]
+                   #:result (reverse result))
+            ([item (hash-ref element "@type")])
+          ;; 3.1
+          (cons (if (blank-node? item)
+                    (blank-node-issuer item)
+                    item)
+                result))))
+     (cond
+      ;; 4
+      [(hash-has-key? element "@value")
+       ;; 4.1
+       (if (eq? list_ 'null)
+           (if (not (hash-has-key? node active-property))
+               ;; 4.1.1
+               (hash-set! node active-property
+                          (list element))
+               ;; 4.1.2
+               (maybe-add-member! node active-property element))
+           ;; 4.2
+           (hash-append-to-array! list "@list" element))]
+      ;; 5
+      [(hash-has-key? element "@list")
+       (define result
+         (make-hash '(("@list" . ()))))
+       (node-map-generation! (hash-ref element "@list") node-map blank-node-issuer
+                             #:active-graph active-graph
+                             #:active-subject active-subject
+                             #:active-property active-property
+                             #:list result)
+       (hash-append-to-array! node active-property result)]
+      ;; 6
+      [else
+       (define id
+         (if (hash-has-key? element "@id")
+             ;; 6.1
+             (let ([id (hash-ref element "@id")])
+               (hash-remove! element "@id")
+               (when (blank-node? id)
+                 (set! id (blank-node-issuer id)))
+               id)
+             ;; 6.2
+             (blank-node-issuer 'null)))
+       ;; 6.3
+       (when (not (hash-has-key? graph id))
+         (hash-set! graph id
+                    (make-hash `(("@id" . ,id)))))
+       ;; 6.4
+       (define node
+         (hash-ref graph id))
+       (if (hash? active-subject)
+           ;; 6.5
+           (if (not (hash-has-key? node active-property))
+               ;; 6.5.1
+               (hash-set! node active-property
+                          (list active-subject))
+               ;; 6.5.2
+               (maybe-add-member! node active-property active-subject))
+           ;; 6.6
+           (when (not (eq? active-property 'null))
+             ;; 6.6.1
+             (define reference
+               (make-hash `(("@id" . ,id))))
+             (if (eq? list 'null)
+                 ;; 6.6.2
+                 (if (not (hash-has-key? node active-property))
+                     ;; 6.6.2.1
+                     (hash-set! node active-property (list reference))
+                     ;; 6.6.2.2
+                     (maybe-add-member! node active-property reference))
+                 ;; 6.6.3
+                 (hash-append-to-array! list "@list" element))))
+       ;; 6.7
+       (when (hash-has-key? element "@type")
+         (for ([item (hash-ref element "@type")])
+           (maybe-add-member! node "@type" item))
+         (hash-remove! element "@type"))
+       ;; 6.8
+       (when (hash-has-key? element "@index")
+         (when (hash-has-key? node "@index")
+           (error 'json-ld-error
+                  "conflicting indexes"))
+         (hash-set! node "@index" (hash-ref element "@index"))
+         (hash-remove! element "@index"))
+       ;; 6.9
+       (when (hash-has-key? element "@reverse")
+         ;; 6.9.1
+         (define referenced-node
+           (make-hash `(("@id" . ,id))))
+         ;; 6.9.2
+         (define reverse-map
+           (hash-ref element "@reverse"))
+         ;; 6.9.3
+         (for ([(property values) reverse-map])
+           ;; 6.9.3.1
+           (for ([value values])
+             ;; 6.9.3.1.1
+             (node-map-generation! value node-map blank-node-issuer
+                                   #:active-graph active-graph
+                                   #:active-subject referenced-node
+                                   #:active-property property)))
+         ;; 6.9.4
+         (hash-remove! element "@reverse"))
+       ;; 6.10
+       (when (hash-has-key? element "@graph")
+         (node-map-generation! (hash-ref element "@graph") node-map
+                               blank-node-issuer
+                               #:active-graph id)
+         (hash-remove! element "@graph"))
+       ;; 6.11
+       (for ([property (sort (hash-keys element))])
+         (define value (hash-ref element property))
+         ;; 6.11.1
+         (when (blank-node? property)
+           (set! property (blank-node-issuer property)))
+         ;; 6.11.2
+         (when (not (hash-has-key? node property))
+           (hash-set! node property '()))
+         ;; 6.11.3
+         (node-map-generation! value node-map blank-node-issuer
+                               #:active-graph active-graph
+                               #:active-subject id
+                               #:active-property property))])]))
+
+(define (make-blank-node-issuer)
+  (let ([counter 0]
+        [identifier-map (make-hash)])
+    (lambda (identifier)
+      (if (and (not (eq? identifier 'null))
+               (hash-has-key? identifier-map identifier))
+          ;; 1
+          (hash-ref identifier-map identifier)
+          ;; 2
+          (let ([blank-node-identifier
+                 (format "_:b~a" counter)])
+            ;; 3
+            (set! counter (+ counter 1))
+            ;; 4
+            (when (not (eq? identifier 'null))
+              (hash-set! identifier-map identifier
+                         blank-node-identifier))
+            ;; 5
+            blank-node-identifier)))))
