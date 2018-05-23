@@ -2260,9 +2260,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           result
           ;; otherwise, add it
           (cons node result))))
-  (let ([element (convert-in element)]
-        ;; 1
-        [node-map (make-hash `(("@default" . ,(make-hash))))])
+  (let* ([element (expand-jsonld element)]
+         [element (convert-in element)]
+         ;; 1
+         [node-map (make-hash `(("@default" . ,(make-hash))))])
     ;; 2
     (node-map-generation! element node-map blank-node-issuer)
     ;; 3
