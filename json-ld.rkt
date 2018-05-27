@@ -2538,7 +2538,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                       #:expand-context [expand-context #f]
                       #:convert-jsobj? [convert-jsobj? #t])
   (define-values (convert-in convert-out)
-    (maybe-converters convert-jsobj?))
+    (maybe-converters convert-jsobj? #:mutable? #t))
   (define blank-node-issuer
    (make-blank-node-issuer))
   (define (get-triples graph)
