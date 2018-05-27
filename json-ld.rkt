@@ -2598,7 +2598,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
      (for/fold ([dataset #hash()])
          ([graph-name (sort (hash-keys node-map) string<?)])
        (define graph (hash-ref node-map graph-name))
-       (if (relative-uri? graph-name)
+       (if (and (not (equal? graph-name "@default"))
+                (relative-uri? graph-name))
            ;; 4.1, continue to next graph / name-graph pair
            dataset
            ;; 4.2 / 4.3
