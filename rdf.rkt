@@ -19,7 +19,8 @@
 
 ;; https://www.w3.org/TR/rdf11-concepts/#dfn-literal
 (struct literal
-  (lexical-form datatype-iri language-tag))
+  (lexical-form datatype-iri language-tag)
+  #:transparent)
 
 (define (make-literal lexical-form datatype-iri [language-tag #f])
   (literal lexical-form datatype-iri language-tag))
