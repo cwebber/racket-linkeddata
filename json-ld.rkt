@@ -2550,7 +2550,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           ;; 4.3.1, continue to next subject / node pair
           triples
           ;; 4.3.2
-          (for ([property (sort (hash-keys node) string<?)])
+          (for/fold ([triples triples])
+              ([property (sort (hash-keys node) string<?)])
             (define values (hash-ref node property))
             (cond
              ;; 4.3.2.1
@@ -2571,7 +2572,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               triples]
              ;; 4.3.2.5
              [else
-              (for ([item values])
+              (for/fold ([triples triples])
+                  ([item values])
                 (if (list-object? item)
                     ;; 4.3.2.5.1
                     (let-values ([(list-triples list-head)
@@ -2594,21 +2596,20 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          [element (convert-in element)]
          [node-map (make-hash `(("@default" . ,(make-hash))))])
     (node-map-generation! element node-map blank-node-issuer)
-    (convert-out
-     (for/fold ([dataset #hash()])
-         ([graph-name (sort (hash-keys node-map) string<?)])
-       (define graph (hash-ref node-map graph-name))
-       (if (and (not (equal? graph-name "@default"))
-                (relative-uri? graph-name))
-           ;; 4.1, continue to next graph / name-graph pair
-           dataset
-           ;; 4.2 / 4.3
-           (let ([triples (get-triples graph)]
-                 [dataset-graph-key (if (equal? graph-name "@default")
-                                        #f graph-name)])
-             (hash-set dataset dataset-graph-key
-                       (append triples
-                               (hash-ref dataset dataset-graph-key '())))))))))
+    (for/fold ([dataset #hash()])
+        ([graph-name (sort (hash-keys node-map) string<?)])
+      (define graph (hash-ref node-map graph-name))
+      (if (and (not (equal? graph-name "@default"))
+               (relative-uri? graph-name))
+          ;; 4.1, continue to next graph / name-graph pair
+          dataset
+          ;; 4.2 / 4.3
+          (let ([triples (get-triples graph)]
+                [dataset-graph-key (if (equal? graph-name "@default")
+                                       #f graph-name)])
+            (hash-set dataset dataset-graph-key
+                      (append triples
+                              (hash-ref dataset dataset-graph-key '()))))))))
 
 (provide json-ld->rdf)
 
