@@ -99,6 +99,13 @@
      (string-contains? obj ":"))
     (_ #f)))
 
+(define (relative-uri? obj)
+  "Check if OBJ is an absolute uri or not."
+  (match obj
+    ((? string?)
+     (not (string-contains? obj ":")))
+    (_ #f)))
+
 ;; @@: For ease of converting
 (define string-startswith? string-prefix?)
 
@@ -147,7 +154,7 @@ and assuming URI isn't a URI on its own.
 
 If not, it just returns URI."
   (if (and (string? base)
-           (not (absolute-uri? uri)))
+           (relative-uri? uri))
       (url->string (combine-url/relative (string->url base)
                                          uri))
       uri))
@@ -672,7 +679,7 @@ remaining context information to process from local-context"
                                                 #:vocab #t #:document-relative #f
                                                 #:local-context local-context
                                                 #:defined defined)])
-                     (when (not (absolute-uri? expanded-iri))
+                     (when (relative-uri? expanded-iri)
                        ;; Uhoh
                        (error 'json-ld-error
                               "invalid IRI mapping 1"))
@@ -1349,7 +1356,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                            (jsobj-assoc result "@language"))
                       (error 'json-ld-error "invalid typed value"))
                      ((and (jsobj-assoc result "@type")
-                           (not (absolute-uri? (jsobj-ref result "@type"))))
+                           (relative-uri? (jsobj-ref result "@type")))
                       (error 'json-ld-error "invalid typed value"))
                      (else result))))
             ;; sec 9
@@ -2495,3 +2502,213 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                          blank-node-identifier))
             ;; 5
             blank-node-identifier)))))
+
+
+(require "rdf.rkt")
+
+(define rdf-uri
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+(define rdf:type
+  (string-append rdf-uri "type"))
+(define rdf:langString
+  (string-append rdf-uri "langString"))
+(define rdf:nil
+  (string-append rdf-uri "nil"))
+(define rdf:first
+  (string-append rdf-uri "first"))
+(define rdf:rest
+  (string-append rdf-uri "rest"))
+(define rdfs-uri
+  "http://www.w3.org/2000/01/rdf-schema#")
+(define xsd-uri
+  "http://www.w3.org/2001/XMLSchema#")
+(define xsd:boolean
+  (string-append xsd-uri "boolean"))
+(define xsd:double
+  (string-append xsd-uri "double"))
+(define xsd:integer
+  (string-append xsd-uri "integer"))
+(define xsd:string
+  (string-append xsd-uri "string"))
+
+
+(define (json-ld->rdf element
+                      #:produce-generalized-rdf? [produce-generalized-rdf? #f]
+                      #:base-iri [base-iri 'null]
+                      #:expand-context [expand-context #f]
+                      #:convert-jsobj? [convert-jsobj? #t])
+  (define-values (convert-in convert-out)
+    (maybe-converters convert-jsobj?))
+  (define blank-node-issuer
+   (make-blank-node-issuer))
+  (define (get-triples graph)
+    (for/fold ([triples '()]
+               #:result (reverse triples))
+        ([subject (sort (hash-keys graph) string<?)])
+      (define node (hash-ref graph subject))
+      (if (relative-uri? subject)
+          ;; 4.3.1, continue to next subject / node pair
+          triples
+          ;; 4.3.2
+          (for ([property (sort (hash-keys node) string<?)])
+            (define values (hash-ref node property))
+            (cond
+             ;; 4.3.2.1
+             [(equal? property "@type")
+              ;; @@: Do we need to wrap this in some iri object?
+              (for/fold ([triples triples])
+                  ([type values])
+                (cons (triple subject rdf:type type) values))]
+             ;; 4.3.2.2
+             [(keyword? property)
+              triples]
+             ;; 4.3.2.3
+             [(and (blank-node? property)
+                   (not produce-generalized-rdf?))
+              triples]
+             ;; 4.3.2.4
+             [(relative-uri? property)
+              triples]
+             ;; 4.3.2.5
+             [else
+              (for ([item values])
+                (if (list-object? item)
+                    ;; 4.3.2.5.1
+                    (let-values ([(list-triples list-head)
+                                  (list-to-rdf-conversion
+                                   (hash-ref item "@list")
+                                   blank-node-issuer)])
+                      (for/fold ([triples
+                                  (cons (triple subject property list-head)
+                                        triples)])
+                          ([list-triple (unbox list-triples)])
+                        (cons list-triple triples)))
+                    ;; 4.3.2.5.2
+                    (let ([result (object-to-rdf-conversion item)])
+                      (if (eq? result 'null)
+                          triples
+                          (cons (triple subject property result)
+                                triples)))))])))))
+
+  (let* ([element (expand-jsonld element)]
+         [element (convert-in element)]
+         [node-map (make-hash `(("@default" . ,(make-hash))))])
+    (node-map-generation! element node-map blank-node-issuer)
+    (convert-out
+     (for/fold ([dataset #hash()])
+         ([graph-name (sort (hash-keys node-map) string<?)])
+       (define graph (hash-ref node-map graph-name))
+       (if (relative-uri? graph-name)
+           ;; 4.1, continue to next graph / name-graph pair
+           dataset
+           ;; 4.2 / 4.3
+           (let ([triples (get-triples graph)]
+                 [dataset-graph-key (if (equal? graph-name "@default")
+                                        #f graph-name)])
+             (hash-set dataset dataset-graph-key
+                       (append triples
+                               (hash-ref dataset dataset-graph-key '())))))))))
+
+(provide json-ld->rdf)
+
+(define (object-to-rdf-conversion item)
+  (define item-is-node-object?
+    (not (or (hash-has-key? item "@value")
+             (hash-has-key? item "@list")
+             (hash-has-key? item "@set"))))
+  (cond
+   ;; 1
+   [(and item-is-node-object?
+         (relative-uri? (hash-ref item "@id")))
+    'null]
+   ;; 2
+   [item-is-node-object?
+    (hash-ref item "@id")]
+   ;; 3
+   [else
+    (define value
+      (hash-ref item "@value"))
+    ;; 4
+    (define datatype
+      (hash-ref item "@type" 'null))
+    ;; 5
+    (cond
+     [(eq? value #t)
+      (set! value "true")
+      (set! datatype
+            (if (eq? datatype 'null)
+                xsd:boolean
+                datatype))]
+     [(eq? value #f)
+      (set! value "false")
+      (set! datatype
+            (if (eq? datatype 'null)
+                xsd:boolean
+                datatype))]
+     ;; 6
+     [(or (flonum? value)
+          (and (number? value)
+               (equal? datatype xsd:double)))
+      (set! value
+            (~r value #:notation 'exponential
+                #:format-exponent 
+                (lambda (e) (format "E~a" e))))
+      (set! datatype
+            (if (eq? datatype 'null)
+                xsd:double
+                datatype))]
+     ;; 7
+     [(or (integer? value)
+          (and (number? value)
+               (equal? datatype xsd:integer)))
+      (set! value (number->string
+                   (if (inexact? value)
+                       (exact->inexact value)
+                       value)))
+      (set! datatype
+            (if (eq? datatype 'null)
+                xsd:integer
+                datatype))]
+     ;; 8
+     [(eq? datatype 'null)
+      (set! datatype
+            (if (hash-has-key? item "@language")
+                rdf:langString
+                xsd:string))])
+    ;; 9
+    (literal value datatype
+             (hash-ref item "@language" #f))]))
+
+(define (list-to-rdf-conversion list_ blank-node-issuer)
+  (if (eq? list_ '())
+      (values '() rdf:nil)
+      (let ([bnodes
+             ;; TODO: I'm not sure if we're supposed to pass in each argument
+             ;; or not to blank-node-issuer
+             (map blank-node-issuer list)])
+        (values
+         (let lp ([list-triples '()]
+                  [bnodes bnodes]
+                  [list_ list_])
+           (match (cons bnodes list_)
+             [(cons '() '())
+              (reverse list-triples)]
+             [(cons (list subject next-bnodes ...)
+                    (list item next-list_ ...))
+              (define object
+                (object-to-rdf-conversion item))
+              (if (not (eq? object 'null))
+                  (lp (cons (triple subject rdf:first object)
+                            list-triples)
+                      next-bnodes next-list_)
+                  (let ([rest (match next-bnodes
+                                [(list rest-item _ ...)
+                                 rest-item]
+                                ['() rdf:nil])])
+                    (lp (cons (triple subject rdf:rest rest)
+                              list-triples)
+                        next-bnodes next-list_)))]))
+         (match bnodes
+           [(list first-bnode _ ...)
+            first-bnode]
+           ['() rdf:nil])))))
