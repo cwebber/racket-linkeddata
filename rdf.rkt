@@ -13,9 +13,10 @@
                      [triple-object get-object]
                      [quad-graph get-graph]))
 
-(struct bnode ())
+(struct blank-node (label)
+        #:transparent)
 
-(provide bnode bnode?)
+(provide blank-node blank-node? blank-node-label)
 
 ;; https://www.w3.org/TR/rdf11-concepts/#dfn-literal
 (struct literal
