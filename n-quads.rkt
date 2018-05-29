@@ -199,3 +199,137 @@
 
 (define (read-nquads input-port)
   (parse-nquads (lex-nquads input-port)))
+
+(provide read-nquads)
+
+(module+ test
+  (require rackunit)
+  (define example-nquads
+    "<http://example.com/Subj1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.com/Type> .
+<http://example.com/Subj1> <http://example.com/prop1> <http://example.com/Obj1> .
+<http://example.com/Subj1> <http://example.com/prop2> \"Plain\" .
+<http://example.com/Subj1> <http://example.com/prop2> \"2012-05-12\"^^<http://www.w3.org/2001/XMLSchema#date> .
+<http://example.com/Subj1> <http://example.com/prop2> \"English\"@en .
+_:b0 <http://example.com/prop1> <http://example.com/Obj1> .
+<http://example.com/Subj1> <http://example.com/prop1> _:b1 .
+<http://example.com/Subj1> <http://example.com/prop1> <http://example.com/Obj1> <http://example.com/a-graph/> .
+<http://example.com/Subj1> <http://example.com/prop1> <http://example.com/Obj1> _:b3 .")
+
+  (test-equal?
+   "Test output of read-nquads"
+   (read-nquads (open-input-string example-nquads))
+   (list
+    (triple
+     "http://example.com/Subj1"
+     "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+     "http://example.com/Type")
+    (triple
+     "http://example.com/Subj1"
+     "http://example.com/prop1"
+     "http://example.com/Obj1")
+    (triple
+     "http://example.com/Subj1"
+     "http://example.com/prop2"
+     (literal "Plain" "http://www.w3.org/2001/XMLSchema#string" #f))
+    (triple
+     "http://example.com/Subj1"
+     "http://example.com/prop2"
+     (literal "2012-05-12" "http://www.w3.org/2001/XMLSchema#date" #f))
+    (triple
+     "http://example.com/Subj1"
+     "http://example.com/prop2"
+     (literal
+      "English"
+      "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+      "en"))
+    (triple
+     (blank-node "_:b0")
+     "http://example.com/prop1"
+     "http://example.com/Obj1")
+    (triple
+     "http://example.com/Subj1"
+     "http://example.com/prop1"
+     (blank-node "_:b1"))
+    (quad
+     "http://example.com/Subj1"
+     "http://example.com/prop1"
+     "http://example.com/Obj1"
+     "http://example.com/a-graph/")
+    (quad
+     "http://example.com/Subj1"
+     "http://example.com/prop1"
+     "http://example.com/Obj1"
+     (blank-node "_:b3")))))
+
+(define (nquads-list->dataset nquads)
+  (for/fold ([dataset `#hash((#f . ,(set)))])
+      ([triple-or-quad nquads])
+    (define this-triple
+      (if (quad? triple-or-quad)
+          (triple (get-subject triple-or-quad)
+                  (get-predicate triple-or-quad)
+                  (get-object triple-or-quad))
+          triple-or-quad))
+    (define graph-label
+      (if (quad? triple-or-quad)
+          (get-graph triple-or-quad)
+          #f))
+    (define dataset-graph
+      (hash-ref dataset graph-label (set)))
+    (hash-set dataset graph-label (set-add dataset-graph this-triple))))
+
+(define (read-nquads-dataset in-port)
+  (nquads-list->dataset (read-nquads in-port)))
+
+(provide nquads-list->dataset read-nquads-dataset)
+
+(module+ test
+  (test-equal?
+   "read-nquads-dataset works"
+   (read-nquads-dataset (open-input-string example-nquads))
+   (make-immutable-hash
+    (list
+     (cons (blank-node "_:b3")
+           (set (triple
+                 "http://example.com/Subj1"
+                 "http://example.com/prop1"
+                 "http://example.com/Obj1")))
+     (cons "http://example.com/a-graph/"
+           (set
+            (triple
+             "http://example.com/Subj1"
+             "http://example.com/prop1"
+             "http://example.com/Obj1")))
+     (cons #f
+           (set
+            (triple
+             "http://example.com/Subj1"
+             "http://example.com/prop2"
+             (literal
+              "English"
+              "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+              "en"))
+            (triple
+             "http://example.com/Subj1"
+             "http://example.com/prop2"
+             (literal "Plain" "http://www.w3.org/2001/XMLSchema#string" #f))
+            (triple
+             "http://example.com/Subj1"
+             "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+             "http://example.com/Type")
+            (triple
+             (blank-node "_:b0")
+             "http://example.com/prop1"
+             "http://example.com/Obj1")
+            (triple
+             "http://example.com/Subj1"
+             "http://example.com/prop2"
+             (literal "2012-05-12" "http://www.w3.org/2001/XMLSchema#date" #f))
+            (triple
+             "http://example.com/Subj1"
+             "http://example.com/prop1"
+             "http://example.com/Obj1")
+            (triple
+             "http://example.com/Subj1"
+             "http://example.com/prop1"
+             (blank-node "_:b1"))))))))
