@@ -169,3 +169,33 @@
              [(eof) '(eof)])])
     (this-lexer in-port)))
 
+(define (parse-nquads lexed-nquads)
+  (define (subject/object? obj)
+    (or (string? obj) (literal? obj) (blank-node? obj)))
+  (define (graph? obj)
+    (or (string? obj) (blank-node? obj)))
+  (let lp ([lexed lexed-nquads])
+    (match lexed
+      ;; triple
+      [(list (? subject/object? subject)
+             (? string? predicate)
+             (? subject/object? object)
+             'dot rest ...)
+       (cons (triple subject predicate object)
+             (lp rest))]
+      ;; quad
+      [(list (? subject/object? subject)
+             (? string? predicate)
+             (? subject/object? object)
+             (? graph? graphlabel)
+             'dot rest ...)
+       (cons (quad subject predicate object graphlabel)
+             (lp rest))]
+      ;; skip eol markers
+      [(list 'eol rest ...)
+       (lp rest)]
+      ;; eof?  We're done!
+      [(list 'eof) '()])))
+
+(define (read-nquads input-port)
+  (parse-nquads (lex-nquads input-port)))
