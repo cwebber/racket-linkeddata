@@ -110,16 +110,6 @@
 ;;   graphLabel ::=  IRIREF | BLANK_NODE_LABEL
 ;;   literal    ::=  STRING_LITERAL_QUOTE ('^^' IRIREF | LANGTAG)?
 
-;; @@: Are we abusing the term token when two values?
-(struct literal-token
-  (str tag) #:transparent)
-(struct iriref-token
-  (iri) #:transparent)
-(struct langtag-token
-  (lang) #:transparent)
-(struct typetag-token
-  (iri) #:transparent)
-
 (define (lex-nquads in-port)
   (letrec ([strip-endchars
             (lambda (str)
@@ -143,31 +133,35 @@
                                      (char-range #\A #\Z)
                                      (char-range #\0 #\9)))))
               lexeme])]
-           [literal-lang-or-type-tag
-            (lambda (input-port)
+           [add-literal-lang-or-type-tag
+            (lambda (literal-str input-port)
               (match (read-char input-port)
-                [#\@ (langtag-token (langtag-lexer input-port))]
+                [#\@ (literal literal-str
+                              rdf:langString
+                              (langtag-lexer input-port))]
                 [#\^
                  (begin
                    (unless (eq? (read-char input-port) #\^)
                      (error "Missing a ^"))
-                   (typetag-token
-                    ((lexer
-                      [iriref (strip-endchars lexeme)])
-                     input-port)))]
-                [#\space #f]))]
+                   (literal literal-str
+                            ((lexer
+                              [iriref (strip-endchars lexeme)])
+                             input-port)
+                            #f))]
+                [#\space
+                 (literal literal-str xsd:string #f)]))]
            [this-lexer
             (lexer
              [eol (cons 'eol
                         (this-lexer input-port))]
-             [iriref (cons (iriref-token (strip-endchars lexeme))
+             [iriref (cons (strip-endchars lexeme)
                            (this-lexer input-port))]
-             [blank-node-label (cons (cons 'blank-node-label lexeme)
+             [blank-node-label (cons (blank-node lexeme)
                                      (this-lexer input-port))]
              [#\"
-              (cons (literal-token
+              (cons (add-literal-lang-or-type-tag
                      (string-lexer input-port)
-                     (literal-lang-or-type-tag input-port))
+                     input-port)
                     (this-lexer input-port))]
              [#\. (cons 'dot
                         (this-lexer input-port))]
