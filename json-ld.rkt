@@ -2506,32 +2506,6 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
 (require "rdf.rkt")
 
-(define rdf-uri
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-(define rdf:type
-  (string-append rdf-uri "type"))
-(define rdf:langString
-  (string-append rdf-uri "langString"))
-(define rdf:nil
-  (string-append rdf-uri "nil"))
-(define rdf:first
-  (string-append rdf-uri "first"))
-(define rdf:rest
-  (string-append rdf-uri "rest"))
-(define rdfs-uri
-  "http://www.w3.org/2000/01/rdf-schema#")
-(define xsd-uri
-  "http://www.w3.org/2001/XMLSchema#")
-(define xsd:boolean
-  (string-append xsd-uri "boolean"))
-(define xsd:double
-  (string-append xsd-uri "double"))
-(define xsd:integer
-  (string-append xsd-uri "integer"))
-(define xsd:string
-  (string-append xsd-uri "string"))
-
-
 (define (json-ld->rdf element
                       #:produce-generalized-rdf? [produce-generalized-rdf? #f]
                       #:base-iri [base-iri 'null]
