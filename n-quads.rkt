@@ -176,7 +176,7 @@
                         (this-lexer input-port))]
              [iriref (cons (strip-endchars lexeme)
                            (this-lexer input-port))]
-             [blank-node-label (cons (blank-node lexeme)
+             [blank-node-label (cons (blank-node (substring lexeme 2))
                                      (this-lexer input-port))]
              [#\"
               (cons (add-literal-lang-or-type-tag
@@ -263,13 +263,13 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
       "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
       "en"))
     (triple
-     (blank-node "_:b0")
+     (blank-node "b0")
      "http://example.com/prop1"
      "http://example.com/Obj1")
     (triple
      "http://example.com/Subj1"
      "http://example.com/prop1"
-     (blank-node "_:b1"))
+     (blank-node "b1"))
     (quad
      "http://example.com/Subj1"
      "http://example.com/prop1"
@@ -279,7 +279,7 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
      "http://example.com/Subj1"
      "http://example.com/prop1"
      "http://example.com/Obj1"
-     (blank-node "_:b3")))))
+     (blank-node "b3")))))
 
 (define (nquads-list->dataset nquads)
   (for/fold ([dataset `#hash((#f . ,(set)))])
@@ -309,7 +309,7 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
    (read-nquads-dataset (open-input-string example-nquads))
    (make-immutable-hash
     (list
-     (cons (blank-node "_:b3")
+     (cons (blank-node "b3")
            (set (triple
                  "http://example.com/Subj1"
                  "http://example.com/prop1"
@@ -338,7 +338,7 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
              "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
              "http://example.com/Type")
             (triple
-             (blank-node "_:b0")
+             (blank-node "b0")
              "http://example.com/prop1"
              "http://example.com/Obj1")
             (triple
@@ -352,4 +352,4 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
             (triple
              "http://example.com/Subj1"
              "http://example.com/prop1"
-             (blank-node "_:b1"))))))))
+             (blank-node "b1"))))))))
