@@ -97,7 +97,7 @@
           (char-range #\u203F #\u2040)))
 
 ;;   BLANK_NODE_LABEL  ::=  '_:' (PN_CHARS_U | [0-9]) ((PN_CHARS | '.')* PN_CHARS)?
-(define-lex-abbrev blank-node-label
+(define-lex-abbrev blank-node-label-abbrev
   (sre-: "_:"
          (sre-or pn-chars-u (char-range #\0 #\9))
          (sre-? (sre-* (sre-or pn-chars #\.)) pn-chars)))
@@ -178,7 +178,7 @@
                         (this-lexer input-port))]
              [iriref (cons (strip-endchars lexeme)
                            (this-lexer input-port))]
-             [blank-node-label (cons (blank-node (substring lexeme 2))
+             [blank-node-label-abbrev (cons (blank-node (substring lexeme 2))
                                      (this-lexer input-port))]
              [#\"
               (cons (add-literal-lang-or-type-tag
