@@ -122,6 +122,11 @@
         ("\\\'" . #\')
         ("\\\\" . #\\)))
 
+(define rev-echars-map
+  (for/fold ([map #hasheq()])
+      ([(key val) echars-map])
+    (hash-set map val key)))
+
 (define (lex-nquads in-port)
   (letrec ([strip-endchars
             (lambda (str)
@@ -355,3 +360,129 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
              "http://example.com/Subj1"
              "http://example.com/prop1"
              (blank-node "b1"))))))))
+
+(define (echar-char? char)
+  (hash-has-key? rev-echars-map char))
+
+(define (char->uchar-str char)
+  (define char-as-hex
+    (format "~x" (char->integer char)))
+  (define (str-of-n-char n char)
+    (list->string (for/list ([i (in-range n)]) char)))
+  (if (> (string-length char-as-hex) 4)
+      (string-append "\\U"
+                     (str-of-n-char (- 8 (string-length char-as-hex))
+                                    #\0)
+                     char-as-hex)
+      (string-append "\\u"
+                     (str-of-n-char (- 4 (string-length char-as-hex))
+                                    #\0)
+                     char-as-hex)))
+
+(define (char-in-range? char char-min char-max)
+  (and (char-ci>=? char char-min)
+       (char-ci<=? char char-max)))
+
+(define (write-nquad quad port)
+  (define (write-string str)
+    (write-char #\" port)
+    (for ([char str])
+      (match char
+        ;; I'm just copying what jsonld.py does here.  This hardly seems
+        ;; formally defined enough, though.
+        [#\\ (display "\\\\" port)]
+        [#\tab (display "\\t" port)]
+        [#\newline (display "\\n" port)]
+        [#\return (display "\\r" port)]
+        [#\" (display "\\\"" port)]
+        [_ (write-char char port)]))
+    (write-char #\" port))
+  (define (write-literal literal)
+    (write-string (literal-lexical-form literal))
+    (cond
+     ;; xsd:string
+     [(and (equal? (literal-datatype-iri literal)
+                   xsd:string)
+           (not (literal-language-tag literal)))
+      (void)] ; no-op  if it's a string
+     ;; rdf:langString
+     [(and (equal? (literal-datatype-iri literal)
+                   rdf:langString)
+           (literal-language-tag literal))
+      (write-char #\@ port)
+      (for ([char (literal-language-tag literal)])
+        (unless (or (eq? char #\-)
+                    (char-in-range? char #\a #\z)
+                    (char-in-range? char #\A #\Z)
+                    (char-in-range? char #\0 #\9))
+          (error "Invalid character for literal language tag" char))
+        (write-char char port))]
+     ;; any other literal tag
+     [(not (literal-language-tag literal))
+      (display "^^" port)
+      (write-iri (literal-datatype-iri literal))]
+     ;; guess it had a literal language tag though it wasn't a literal datatype
+     [else (error "malformed literal")]))
+  (define (write-blank-node bnode)
+    (display "_:" port)
+    (for ([char (blank-node-label bnode)])
+      (if (char-whitespace? char)
+          ;; TODO: I think this should be enough to protect against
+          ;;   escape attacks, but really we should be using the same
+          ;;   structure from the lexer/parser as a predicate to check
+          ;;   if this is legitimate.  Sadly the default racket lexer/parser
+          ;;   is not very composable / reusable as predicates
+          (error "Blank node must not have whitespace characters")
+          (write-char char port))))
+  (define (write-iri iri)
+    (write-char #\< port)
+    (for ([char iri])
+      (match char
+        [(? echar-char?)
+         (display (hash-ref rev-echars-map char) port)]
+        [(? (lambda (c)
+              (or (char<=? c #\u0020)
+                  (member c '(#\< #\> #\" #\{ #\} #\| #\` #\\)))))
+         (display (char->uchar-str char) port)]
+        [_ (write-char char port)]))
+    (write-char #\> port))
+  (define (write-component obj)
+    (match obj
+      [(? string?)
+       (write-iri obj)]
+      [(? blank-node?)
+       (write-blank-node obj)]
+      [(? literal?)
+       (write-literal obj)]))
+  (define (write-triple obj)
+    (write-component (get-subject obj))
+    (display " " port)
+    (write-component (get-predicate obj))
+    (display " " port)
+    (write-component (get-object obj))
+    (display " ." port))
+  (define (write-quad obj)
+    (write-component (get-subject obj))
+    (display " " port)
+    (write-component (get-predicate obj))
+    (display " " port)
+    (write-component (get-object obj))
+    (when (get-graph obj)
+      (write-component (get-graph obj)))
+    (display " ." port))
+  (match quad
+    [(? quad?)
+     (write-quad quad)]
+    [(? triple? triple)
+     (write-triple triple)]))
+
+(define (nquad->string quad)
+  'TODO)
+
+(define (write-nquads quads port)
+  'TODO)
+
+(define (nquads->string quads port)
+  'TODO)
+
+(provide write-nquad nquad->string write-nquads nquads->string)
