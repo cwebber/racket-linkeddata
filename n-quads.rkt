@@ -4,6 +4,7 @@
          (prefix-in sre- parser-tools/lex-sre)
          "rdf.rkt")
 
+;; TODO: redo this with megaparsack or etc?
 ;; Productions for terminals
 
 ;;   HEX            ::=  [0-9] | [A-F] | [a-f]
