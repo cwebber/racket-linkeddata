@@ -26,9 +26,11 @@
   (sre-: #\@
          (sre-+ (sre-or (char-range #\a #\z)
                         (char-range #\A #\Z))
-                (sre-* (sre-+ (sre-or (char-range #\a #\z)
-                                      (char-range #\A #\Z)
-                                      (char-range #\0 #\9)))))))
+                (sre-* (sre-: #\-
+                              (sre-+ (sre-or (char-range #\a #\z)
+                                             (char-range #\A #\Z)
+                                             (char-range #\0 #\9))))))))
+
 ;;   EOL            ::=  [#xD#xA]+
 (define-lex-abbrev eol
   (sre-+ (sre-or #\newline #\return)))
