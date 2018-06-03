@@ -110,6 +110,16 @@
 ;;   graphLabel ::=  IRIREF | BLANK_NODE_LABEL
 ;;   literal    ::=  STRING_LITERAL_QUOTE ('^^' IRIREF | LANGTAG)?
 
+(define echars-map
+  #hash(("\\t" . #\tab)
+        ("\\b" . #\backspace)
+        ("\\n" . #\newline)
+        ("\\r" . #\return)
+        ("\\f" . #\page)
+        ("\\\"" . #\")
+        ("\\\'" . #\')
+        ("\\\\" . #\\)))
+
 (define (lex-nquads in-port)
   (letrec ([strip-endchars
             (lambda (str)
@@ -117,12 +127,22 @@
                          (- (string-length str) 1)))]
            [string-lexer
             (lexer
-             [(sre-* (sre-or (char-complement (sre-or #\" #\\ #\newline #\return))
-                             echar uchar))
-              (begin
-                (unless (eq? (read-char input-port) #\")
-                  (error "Missing end quote"))
-                lexeme)])]
+             ;; most characters
+             [(sre-+ (char-complement (sre-or #\" #\\ #\newline #\return)))
+              (append (string->list lexeme)
+                      (string-lexer input-port))]
+             ;; escape characters
+             [echar
+              (cons (hash-ref echars-map lexeme)
+                    (string-lexer input-port))]
+             ;; unicode "uchars"
+             [uchar
+              (cons (integer->char (string->number (string-append "#x" (substring lexeme 2))))
+                    (string-lexer input-port))]
+             [#\" '()])]
+           [read-string
+            (lambda (port)
+              (list->string (string-lexer port)))]
            ;; we'll already have eaten the @ by now
            [langtag-lexer
             (lexer
@@ -160,7 +180,7 @@
                                      (this-lexer input-port))]
              [#\"
               (cons (add-literal-lang-or-type-tag
-                     (string-lexer input-port)
+                     (read-string input-port)
                      input-port)
                     (this-lexer input-port))]
              [#\. (cons 'dot
