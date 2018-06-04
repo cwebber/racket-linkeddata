@@ -480,8 +480,6 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
     (write-char #\< port)
     (for ([char iri])
       (match char
-        [(? echar-char?)
-         (display (hash-ref rev-echars-map char) port)]
         [(? (lambda (c)
               (or (char<=? c #\u0020)
                   (member c '(#\< #\> #\" #\{ #\} #\| #\` #\\)))))
