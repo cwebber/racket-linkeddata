@@ -1,58 +1,95 @@
 #lang racket
 
-(require parser-tools/lex
+(require data/monad data/applicative
+         megaparsack megaparsack/text
          (prefix-in sre- parser-tools/lex-sre)
          "rdf.rkt")
 
-;; TODO: redo this with megaparsack or etc?
+(module+ test
+  (require rackunit))
+
 ;; Productions for terminals
 
 ;;   HEX            ::=  [0-9] | [A-F] | [a-f]
-(define-lex-abbrev hex
-  (sre-or (char-range #\0 #\9)
-          (char-range #\A #\F)
-          (char-range #\a #\f)))
+(define hex/p
+  (or/p (char-between/p #\0 #\9)
+        (char-between/p #\A #\F)
+        (char-between/p #\a #\f)))
 
 ;;   UCHAR          ::=  '\u' HEX HEX HEX HEX | '\U' HEX HEX HEX HEX HEX HEX HEX HEX
-(define-lex-abbrev uchar
-  (sre-or (sre-: "\\u" hex hex hex hex)
-          (sre-: "\\U" hex hex hex hex hex hex hex hex)))
+(define uchar/p
+  (do (char/p #\\)
+      [hexchars
+       <- (or/p (do (char/p #\u)
+                    (many/p hex/p #:min 4 #:max 4))
+                (do (char/p #\U)
+                    (many/p hex/p #:min 8 #:max 8)))]
+      (pure (integer->char
+             (string->number
+              (string-append "#x" (list->string hexchars)))))))
+
+
 ;;   ECHAR          ::=  '\' [tbnrf"'\]
-(define-lex-abbrev echar
-  (sre-: #\\ (sre-or #\t #\b #\n #\r #\f #\" #\' #\\)))
+(define echar/p
+  (do (char/p #\\)
+      [echar <- (one-of/p '(#\t #\b #\n #\r #\f #\" #\' #\\))]
+      (pure
+       (match echar
+         (#\t #\tab)
+         (#\b #\backspace)
+         (#\n #\newline)
+         (#\r #\return)
+         (#\f #\page)
+         (#\" #\")
+         (#\' #\')
+         (#\\ #\\)))))
 
 ;;   LANGTAG        ::=  '@' [a-zA-Z]+ ('-' [a-zA-Z0-9]+)*
-
-(define-lex-abbrev langtag
-  (sre-: #\@
-         (sre-+ (sre-or (char-range #\a #\z)
-                        (char-range #\A #\Z))
-                (sre-* (sre-: #\-
-                              (sre-+ (sre-or (char-range #\a #\z)
-                                             (char-range #\A #\Z)
-                                             (char-range #\0 #\9))))))))
+(define langtag/p
+  (do (char/p #\@)
+      [first-chars <- (many+/p (or/p (char-between/p #\a #\z)
+                                     (char-between/p #\A #\Z)))]
+      [dash-chars
+       <- (many/p (do (char/p #\-)
+                      [after-dash
+                       <- (many+/p
+                           (or/p (char-between/p #\a #\z)
+                                 (char-between/p #\A #\Z)
+                                 (char-between/p #\0 #\9)))]
+                      (pure (cons #\- after-dash))))]
+      (pure (list->string (append first-chars (apply append dash-chars))))))
 
 ;;   EOL            ::=  [#xD#xA]+
-(define-lex-abbrev eol
-  (sre-+ (sre-or #\newline #\return)))
+(define eol/p
+  (many+/p (one-of/p '(#\newline #\return))))
 
 ;;   IRIREF         ::=  '<' ([^#x00-#x20<>"{}|^`\] | UCHAR)* '>'
-(define-lex-abbrev iriref
-  (sre-: #\<
-         (sre-* (sre-or
-                 (char-complement (sre-or (char-range #\u00 #\u20)
-                                          #\< #\>
-                                          #\" #\{ #\} #\| #\` #\\))
-                 uchar))
-         #\>))
+(define iriref/p
+  (do (char/p #\<)
+      [chars
+       <- (many/p (or/p
+                   (satisfy/p
+                    (lambda (c)
+                      (not (or (char-in-range? c #\u00 #\u20)
+                               (member c '(#\< #\>
+                                           #\" #\{ #\} #\| #\` #\\))))))
+                   uchar/p))]
+      (char/p #\>)
+      (pure (list->string chars))))
 
 ;;   STRING_LITERAL_QUOTE  ::=  '"' ([^#x22#x5C#xA#xD] | ECHAR | UCHAR)* '"'
-
-(define-lex-abbrev string-literal-quote
-  (sre-: #\"
-         (sre-* (sre-or (char-complement (sre-or #\" #\\ #\newline #\return))
-                        echar uchar))
-         #\"))
+(define string-literal/p
+  (do (char/p #\")
+      [chars
+       <- (many/p (or/p
+                   (label/p
+                    "plain character that isn't \", \\, \\n, \\r"
+                    (satisfy/p
+                     (lambda (c)
+                       (not (member c '(#\" #\\ #\newline #\return))))))
+                   (try/p echar/p) uchar/p))]
+      (char/p #\")
+      (pure (list->string chars))))
 
 ;;   PN_CHARS_BASE  ::=  [A-Z] | [a-z] | [#x00C0-#x00D6] |
 ;;                       [#x00D8-#x00F6] |
@@ -66,172 +103,158 @@
 ;;                       [#xF900-#xFDCF] |
 ;;                       [#xFDF0-#xFFFD] |
 ;;                       [#x10000-#xEFFFF]
-(define-lex-abbrev pn-chars-base
-  (sre-or (char-range #\a #\z)
-          (char-range #\A #\Z)
-          (char-range #\u00C0 #\u00D6)
-          (char-range #\u00D8 #\u00F6)
-          (char-range #\u00F8 #\u02FF)
-          (char-range #\u0370 #\u037D)
-          (char-range #\u037F #\u1FFF)
-          (char-range #\u200C #\u200D)
-          (char-range #\u2070 #\u218F)
-          (char-range #\u2C00 #\u2FEF)
-          (char-range #\u3001 #\uD7FF)
-          (char-range #\uF900 #\uFDCF)
-          (char-range #\uFDF0 #\uFFFD)
-          (char-range #\U00010000 #\U000EFFFF)))
+(define pn-chars-base/p
+  (or/p (char-between/p #\a #\z)
+        (char-between/p #\A #\Z)
+        (char-between/p #\u00C0 #\u00D6)
+        (char-between/p #\u00D8 #\u00F6)
+        (char-between/p #\u00F8 #\u02FF)
+        (char-between/p #\u0370 #\u037D)
+        (char-between/p #\u037F #\u1FFF)
+        (char-between/p #\u200C #\u200D)
+        (char-between/p #\u2070 #\u218F)
+        (char-between/p #\u2C00 #\u2FEF)
+        (char-between/p #\u3001 #\uD7FF)
+        (char-between/p #\uF900 #\uFDCF)
+        (char-between/p #\uFDF0 #\uFFFD)
+        (char-between/p #\U00010000 #\U000EFFFF)))
 
 ;;   PN_CHARS_U     ::=  PN_CHARS_BASE | '_' | ':'
-(define-lex-abbrev pn-chars-u
-  (sre-or pn-chars-base
-          #\_ #\:))
+(define pn-chars-u/p
+  (or/p pn-chars-base/p
+        (char/p #\_) (char/p #\:)))
 
 ;;   PN_CHARS       ::=  PN_CHARS_U | '-' | [0-9] | #x00B7 |
 ;;                       [#x0300-#x036F] |
 ;;                       [#x203F-#x2040]
-(define-lex-abbrev pn-chars
-  (sre-or pn-chars-u #\-
-          (char-range #\0 #\9)
-          #\u00B7
-          (char-range #\u0300 #\u036F)
-          (char-range #\u203F #\u2040)))
+(define pn-chars/p
+  (or/p pn-chars-u/p (char/p #\-)
+        (char-between/p #\0 #\9)
+        (char/p #\u00B7)
+        (char-between/p #\u0300 #\u036F)
+        (char-between/p #\u203F #\u2040)))
 
 ;;   BLANK_NODE_LABEL  ::=  '_:' (PN_CHARS_U | [0-9]) ((PN_CHARS | '.')* PN_CHARS)?
-(define-lex-abbrev blank-node-label-abbrev
-  (sre-: "_:"
-         (sre-or pn-chars-u (char-range #\0 #\9))
-         (sre-? (sre-* (sre-or pn-chars #\.)) pn-chars)))
+(define blank-node-label/p
+  (do (string/p "_:")
+      [first-char
+       <- (or/p pn-chars-u/p (char-between/p #\0 #\9))]
+      [rest-chars
+       ;; FIXME: Technically we're allowing this to end with '.' which isn't permited!
+       <- (many/p (or/p pn-chars/p (char/p #\.)))]
+      (pure (blank-node (list->string (cons first-char rest-chars))))))
 
-;;   nquadsDoc  ::=  statement? (EOL statement)* EOL?
-;;   statement  ::=  subject predicate object
-;;                   graphLabel? '.'
-;;   subject    ::=  IRIREF | BLANK_NODE_LABEL
-;;   predicate  ::=  IRIREF
-;;   object     ::=  IRIREF | BLANK_NODE_LABEL |
-;;                   literal
-;;   graphLabel ::=  IRIREF | BLANK_NODE_LABEL
 ;;   literal    ::=  STRING_LITERAL_QUOTE ('^^' IRIREF | LANGTAG)?
-
-(define echars-map
-  #hash(("\\t" . #\tab)
-        ("\\b" . #\backspace)
-        ("\\n" . #\newline)
-        ("\\r" . #\return)
-        ("\\f" . #\page)
-        ("\\\"" . #\")
-        ("\\\'" . #\')
-        ("\\\\" . #\\)))
-
-(define rev-echars-map
-  (for/fold ([map #hasheq()])
-      ([(key val) echars-map])
-    (hash-set map val key)))
-
-(define (lex-nquads in-port)
-  (letrec ([strip-endchars
-            (lambda (str)
-              (substring str 1
-                         (- (string-length str) 1)))]
-           [string-lexer
-            (lexer
-             ;; most characters
-             [(sre-+ (char-complement (sre-or #\" #\\ #\newline #\return)))
-              (append (string->list lexeme)
-                      (string-lexer input-port))]
-             ;; escape characters
-             [echar
-              (cons (hash-ref echars-map lexeme)
-                    (string-lexer input-port))]
-             ;; unicode "uchars"
-             [uchar
-              (cons (integer->char (string->number (string-append "#x" (substring lexeme 2))))
-                    (string-lexer input-port))]
-             [#\" '()])]
-           [read-string
-            (lambda (port)
-              (list->string (string-lexer port)))]
-           ;; we'll already have eaten the @ by now
-           [langtag-lexer
-            (lexer
-             [(sre-:
-               (sre-+ (sre-or (char-range #\a #\z)
-                              (char-range #\A #\Z)))
-               (sre-* (sre-+ (sre-or (char-range #\a #\z)
-                                     (char-range #\A #\Z)
-                                     (char-range #\0 #\9)))))
-              lexeme])]
-           [add-literal-lang-or-type-tag
-            (lambda (literal-str input-port)
-              (match (read-char input-port)
-                [#\@ (literal literal-str
-                              rdf:langString
-                              (langtag-lexer input-port))]
-                [#\^
-                 (begin
-                   (unless (eq? (read-char input-port) #\^)
-                     (error "Missing a ^"))
-                   (literal literal-str
-                            ((lexer
-                              [iriref (strip-endchars lexeme)])
-                             input-port)
-                            #f))]
-                [#\space
-                 (literal literal-str xsd:string #f)]))]
-           [this-lexer
-            (lexer
-             [eol (cons 'eol
-                        (this-lexer input-port))]
-             [iriref (cons (strip-endchars lexeme)
-                           (this-lexer input-port))]
-             [blank-node-label-abbrev (cons (blank-node (substring lexeme 2))
-                                     (this-lexer input-port))]
-             [#\"
-              (cons (add-literal-lang-or-type-tag
-                     (read-string input-port)
-                     input-port)
-                    (this-lexer input-port))]
-             [#\. (cons 'dot
-                        (this-lexer input-port))]
-             [(sre-+ #\space) (this-lexer input-port)]
-             [(eof) '(eof)])])
-    (this-lexer in-port)))
-
-(define (parse-nquads lexed-nquads)
-  (define (subject/object? obj)
-    (or (string? obj) (literal? obj) (blank-node? obj)))
-  (define (graph? obj)
-    (or (string? obj) (blank-node? obj)))
-  (let lp ([lexed lexed-nquads])
-    (match lexed
-      ;; triple
-      [(list (? subject/object? subject)
-             (? string? predicate)
-             (? subject/object? object)
-             'dot rest ...)
-       (cons (triple subject predicate object)
-             (lp rest))]
-      ;; quad
-      [(list (? subject/object? subject)
-             (? string? predicate)
-             (? subject/object? object)
-             (? graph? graphlabel)
-             'dot rest ...)
-       (cons (quad subject predicate object graphlabel)
-             (lp rest))]
-      ;; skip eol markers
-      [(list 'eol rest ...)
-       (lp rest)]
-      ;; eof?  We're done!
-      [(list 'eof) '()])))
-
-(define (read-nquads input-port)
-  (parse-nquads (lex-nquads input-port)))
-
-(provide read-nquads)
+(define literal/p
+  (do [string-literal
+       <- string-literal/p]
+      [iri-or-langtag
+       <- (many/p
+           #:min 0 #:max 1
+           (or/p (do (string/p "^^")
+                     [iriref <- iriref/p]
+                     (pure (cons 'iriref iriref)))
+                 (do [langtag <- langtag/p]
+                     (pure (cons 'langtag langtag)))))]
+      (pure
+       (match iri-or-langtag
+         [(list (cons 'langtag langtag))
+          (literal string-literal
+                   rdf:langString
+                   langtag)]
+         [(list (cons 'iriref iriref))
+          (literal string-literal
+                   iriref
+                   #f)]
+         ['()
+          (literal string-literal
+                   xsd:string
+                   #f)]))))
 
 (module+ test
-  (require rackunit)
+  (test-equal?
+   "literal/p parsing string literal"
+   (parse-result! (parse-string literal/p "\"foop\""))
+   (literal "foop" "http://www.w3.org/2001/XMLSchema#string" #f))
+
+  (test-equal?
+   "literal/p parsing typed literal"
+   (parse-result! (parse-string literal/p "\"foop\"^^<urn:foo>"))
+   (literal "foop" "urn:foo" #f))
+
+  (test-equal?
+   "literal/p parsing literal with language tag"
+   (parse-result! (parse-string literal/p "\"foop\"@beep-boop"))
+   (literal
+    "foop"
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+    "beep-boop")))
+
+;;   subject    ::=  IRIREF | BLANK_NODE_LABEL
+
+(define subject/p
+  (or/p iriref/p
+        blank-node-label/p))
+
+;;   predicate  ::=  IRIREF
+;;   @@: json-ld allows for blank nodes as preciates
+(define predicate/p
+  (or/p iriref/p
+        blank-node-label/p))
+
+;;   object     ::=  IRIREF | BLANK_NODE_LABEL |
+;;                   literal
+(define object/p
+  (or/p iriref/p
+        blank-node-label/p
+        literal/p))
+
+;;   graphLabel ::=  IRIREF | BLANK_NODE_LABEL
+(define graph-label/p
+  (or/p iriref/p
+        blank-node-label/p))
+
+;;   statement  ::=  subject predicate object
+;;                   graphLabel? '.'
+
+(define statement/p
+  (do [subject <- subject/p]
+      (many/p (char/p #\space))
+      [predicate <- predicate/p]
+      (many/p (char/p #\space))
+      [object <- object/p]
+      (many/p (char/p #\space))
+      ;; maybe get a graph
+      [maybe-graph
+       <-
+       (many/p #:min 0 #:max 1
+               (do [g <- graph-label/p]
+                   (many/p (char/p #\space))
+                   (pure g)))]
+      (char/p #\.)
+      (many/p (char/p #\space))
+      (pure
+       (match maybe-graph
+         ['()
+          (triple subject predicate object)]
+         [(list graph)
+          (quad subject predicate object graph)]))))
+
+;;   nquadsDoc  ::=  statement? (EOL statement)* EOL?
+
+(define nquads-doc/p
+  (do [statements
+       <- (many/p statement/p #:sep eol/p)]
+      (many/p (one-of/p '(#\newline #\return)))
+      eof/p
+      (pure statements)))
+
+(define (string->nquads str)
+  (parse-result! (parse-string nquads-doc/p str)))
+
+(provide string->nquads)
+
+(module+ test
   (define example-nquads
     "<http://example.com/Subj1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.com/Type> .
 <http://example.com/Subj1> <http://example.com/prop1> <http://example.com/Obj1> .
@@ -288,8 +311,8 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
       (blank-node "b3"))))
 
   (test-equal?
-   "Test output of read-nquads"
-   (read-nquads (open-input-string example-nquads))
+   "Test output of string->-nquads"
+   (string->nquads example-nquads)
    example-quads))
 
 (define (nquads-list->dataset nquads)
@@ -309,15 +332,15 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
       (hash-ref dataset graph-label (set)))
     (hash-set dataset graph-label (set-add dataset-graph this-triple))))
 
-(define (read-nquads-dataset in-port)
-  (nquads-list->dataset (read-nquads in-port)))
+(define (string->nquads-dataset str)
+  (nquads-list->dataset (string->nquads str)))
 
-(provide nquads-list->dataset read-nquads-dataset)
+(provide nquads-list->dataset string->nquads-dataset)
 
 (module+ test
   (test-equal?
    "read-nquads-dataset works"
-   (read-nquads-dataset (open-input-string example-nquads))
+   (string->nquads-dataset example-nquads)
    (make-immutable-hash
     (list
      (cons (blank-node "b3")
@@ -365,8 +388,27 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
              "http://example.com/prop1"
              (blank-node "b1"))))))))
 
+(define echars-map
+  #hash(("\\t" . #\tab)
+        ("\\b" . #\backspace)
+        ("\\n" . #\newline)
+        ("\\r" . #\return)
+        ("\\f" . #\page)
+        ("\\\"" . #\")
+        ("\\\'" . #\')
+        ("\\\\" . #\\)))
+
+(define rev-echars-map
+  (for/fold ([map #hasheq()])
+      ([(key val) echars-map])
+    (hash-set map val key)))
+
 (define (echar-char? char)
   (hash-has-key? rev-echars-map char))
+
+(define (char-in-range? char char-min char-max)
+  (and (char-ci>=? char char-min)
+       (char-ci<=? char char-max)))
 
 (define (char->uchar-str char)
   (define char-as-hex
@@ -382,10 +424,6 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
                      (str-of-n-char (- 4 (string-length char-as-hex))
                                     #\0)
                      char-as-hex)))
-
-(define (char-in-range? char char-min char-max)
-  (and (char-ci>=? char char-min)
-       (char-ci<=? char char-max)))
 
 (define (write-nquad quad port)
   (define (write-string str)
@@ -510,5 +548,19 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
    (nquads->string example-quads)
    example-nquads)
 
-  ;; And attacks here:
+  ;; Check for an attack.  This tries to break out into multiple entries.
+  ;; Lazily, we're seeing if it succeeds by counting out how many newlines are emitted.
+  ;; In the future, maybe this will throw an exception.  That may be okay, since
+  ;; arguably this is invalid input.
+  (test-equal?
+   "write-nquads not susceptable to tuple insertion attack"
+   (count
+    (lambda (x) (equal? x #\newline))
+    (string->list
+     (nquads->string
+      (list
+       (triple "http://foo.example/> <http://bar.example/> \"baz\" .\n<data:little> <data:bobby> <data:tables> .\n<data:in-ur-base"
+               "http://quux.example/"
+               "_:b0")))))
+   0)
   )
