@@ -243,51 +243,54 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
 <http://example.com/Subj1> <http://example.com/prop1> <http://example.com/Obj1> <http://example.com/a-graph/> .
 <http://example.com/Subj1> <http://example.com/prop1> <http://example.com/Obj1> _:b3 .")
 
+  (define example-quads
+    (list
+     (triple
+      "http://example.com/Subj1"
+      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+      "http://example.com/Type")
+     (triple
+      "http://example.com/Subj1"
+      "http://example.com/prop1"
+      "http://example.com/Obj1")
+     (triple
+      "http://example.com/Subj1"
+      "http://example.com/prop2"
+      (literal "Plain" "http://www.w3.org/2001/XMLSchema#string" #f))
+     (triple
+      "http://example.com/Subj1"
+      "http://example.com/prop2"
+      (literal "2012-05-12" "http://www.w3.org/2001/XMLSchema#date" #f))
+     (triple
+      "http://example.com/Subj1"
+      "http://example.com/prop2"
+      (literal
+       "English"
+       "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+       "en"))
+     (triple
+      (blank-node "b0")
+      "http://example.com/prop1"
+      "http://example.com/Obj1")
+     (triple
+      "http://example.com/Subj1"
+      "http://example.com/prop1"
+      (blank-node "b1"))
+     (quad
+      "http://example.com/Subj1"
+      "http://example.com/prop1"
+      "http://example.com/Obj1"
+      "http://example.com/a-graph/")
+     (quad
+      "http://example.com/Subj1"
+      "http://example.com/prop1"
+      "http://example.com/Obj1"
+      (blank-node "b3"))))
+
   (test-equal?
    "Test output of read-nquads"
    (read-nquads (open-input-string example-nquads))
-   (list
-    (triple
-     "http://example.com/Subj1"
-     "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-     "http://example.com/Type")
-    (triple
-     "http://example.com/Subj1"
-     "http://example.com/prop1"
-     "http://example.com/Obj1")
-    (triple
-     "http://example.com/Subj1"
-     "http://example.com/prop2"
-     (literal "Plain" "http://www.w3.org/2001/XMLSchema#string" #f))
-    (triple
-     "http://example.com/Subj1"
-     "http://example.com/prop2"
-     (literal "2012-05-12" "http://www.w3.org/2001/XMLSchema#date" #f))
-    (triple
-     "http://example.com/Subj1"
-     "http://example.com/prop2"
-     (literal
-      "English"
-      "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
-      "en"))
-    (triple
-     (blank-node "b0")
-     "http://example.com/prop1"
-     "http://example.com/Obj1")
-    (triple
-     "http://example.com/Subj1"
-     "http://example.com/prop1"
-     (blank-node "b1"))
-    (quad
-     "http://example.com/Subj1"
-     "http://example.com/prop1"
-     "http://example.com/Obj1"
-     "http://example.com/a-graph/")
-    (quad
-     "http://example.com/Subj1"
-     "http://example.com/prop1"
-     "http://example.com/Obj1"
-     (blank-node "b3")))))
+   example-quads))
 
 (define (nquads-list->dataset nquads)
   (for/fold ([dataset `#hash((#f . ,(set)))])
@@ -479,12 +482,33 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
      (write-triple triple)]))
 
 (define (nquad->string quad)
-  'TODO)
+  (call-with-output-string
+    (lambda (p)
+      (write-nquad quad p))))
 
 (define (write-nquads quads port)
-  'TODO)
+  (let lp ([quads quads]
+           [first #t])
+    (match quads
+      [(list quad rest ...)
+       (unless first
+         (newline port))
+       (write-nquad quad port)
+       (lp rest #f)]
+      ['() (void)])))
 
-(define (nquads->string quads port)
-  'TODO)
+(define (nquads->string quads)
+  (call-with-output-string
+    (lambda (p)
+      (write-nquads quads p))))
 
 (provide write-nquad nquad->string write-nquads nquads->string)
+
+(module+ test
+  (test-equal?
+   "write-nquads basic examples"
+   (nquads->string example-quads)
+   example-nquads)
+
+  ;; And attacks here:
+  )
