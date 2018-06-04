@@ -1,6 +1,6 @@
 #lang racket
 
-(require data/monad data/applicative
+(require data/monad data/applicative data/either
          megaparsack megaparsack/text
          (prefix-in sre- parser-tools/lex-sre)
          "rdf.rkt")
@@ -469,7 +469,8 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
     (define bnode-str
       (string-append "_:" (blank-node-label bnode)))
     ;; Ensure this is a valid blank node
-    (unless (success? (parse-string (do blank-node-label/p eof/p)))
+    (unless (success? (parse-string (do blank-node-label/p eof/p)
+                                    bnode-str))
       (error "Invalid blank node label"))
     (display bnode-str port))
   (define (write-iri iri)
@@ -576,6 +577,11 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
                (literal "beep" rdf:langString
                         "foo .\n <urn:in> <urn:ur> <urn:base>"))))))
 
-  
-
-  )
+  (test-exn
+   "catch blank node injection attack attempt"
+   exn:fail?
+   (lambda ()
+     (nquads->string
+      (list
+       (triple (blank-node "b0<urn:bar>") "http://quux.example/"
+               (blank-node "b1")))))))
