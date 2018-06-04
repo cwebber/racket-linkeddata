@@ -542,23 +542,44 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
 
 (module+ test
   (test-equal?
-   "write-nquads basic examples"
+   "nquads->string basic examples"
    (nquads->string example-quads)
    example-nquads)
 
+  (define problematic-triples
+    (list
+     (triple
+      "http://foo.example/> <http://bar.example/> \"baz\" .\n<data:little> <data:bobby> <data:tables> .\n<data:in-ur-base"
+      "http://quux.example/"
+      (blank-node "b0"))))
+
   ;; Check for an attack.  This tries to break out into multiple entries.
   ;; Lazily, we're seeing if it succeeds by counting out how many newlines are emitted.
-  ;; In the future, maybe this will throw an exception.  That may be okay, since
-  ;; arguably this is invalid input.
   (test-equal?
-   "write-nquads not susceptable to tuple insertion attack"
+   "nquads->string not susceptable to tuple insertion attack via iri"
    (count
     (lambda (x) (equal? x #\newline))
     (string->list
+     (nquads->string problematic-triples)))
+   0)
+
+  ;; There and back again
+  (test-equal?
+   "nquads->string and restoring with tuple insertion attempt should restore original"
+   (string->nquads
+    (nquads->string problematic-triples))
+   problematic-triples)
+
+  (test-exn
+   "catch literal language tag attack attempt"
+   exn:fail?
+   (lambda ()
      (nquads->string
       (list
-       (triple "http://foo.example/> <http://bar.example/> \"baz\" .\n<data:little> <data:bobby> <data:tables> .\n<data:in-ur-base"
-               "http://quux.example/"
-               "_:b0")))))
-   0)
+       (triple (blank-node "b0") "http://quux.example/"
+               (literal "beep" rdf:langString
+                        "foo .\n <urn:in> <urn:ur> <urn:base>"))))))
+
+  
+
   )
