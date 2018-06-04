@@ -466,16 +466,12 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
      ;; guess it had a literal language tag though it wasn't a literal datatype
      [else (error "malformed literal")]))
   (define (write-blank-node bnode)
-    (display "_:" port)
-    (for ([char (blank-node-label bnode)])
-      (if (char-whitespace? char)
-          ;; TODO: I think this should be enough to protect against
-          ;;   escape attacks, but really we should be using the same
-          ;;   structure from the lexer/parser as a predicate to check
-          ;;   if this is legitimate.  Sadly the default racket lexer/parser
-          ;;   is not very composable / reusable as predicates
-          (error "Blank node must not have whitespace characters")
-          (write-char char port))))
+    (define bnode-str
+      (string-append "_:" (blank-node-label bnode)))
+    ;; Ensure this is a valid blank node
+    (unless (success? (parse-string (do blank-node-label/p eof/p)))
+      (error "Invalid blank node label"))
+    (display bnode-str port))
   (define (write-iri iri)
     (write-char #\< port)
     (for ([char iri])
