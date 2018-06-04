@@ -469,6 +469,7 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
     (display " " port)
     (write-component (get-object obj))
     (when (get-graph obj)
+      (display " " port)
       (write-component (get-graph obj)))
     (display " ." port))
   (match quad
