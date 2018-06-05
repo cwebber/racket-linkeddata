@@ -72,7 +72,7 @@
                     (lambda (c)
                       (not (or (char-in-range? c #\u00 #\u20)
                                (member c '(#\< #\>
-                                           #\" #\{ #\} #\| #\` #\\))))))
+                                           #\" #\{ #\} #\| #\^ #\` #\\))))))
                    uchar/p))]
       (char/p #\>)
       (pure (list->string chars))))
