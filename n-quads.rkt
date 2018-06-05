@@ -245,12 +245,18 @@
 (define nquads-doc/p
   (do [statements
        <- (many/p statement/p #:sep eol/p)]
-      (many/p (one-of/p '(#\newline #\return)))
       eof/p
       (pure statements)))
 
 (define (string->nquads str)
-  (parse-result! (parse-string nquads-doc/p str)))
+  (parse-result!
+   (parse-string nquads-doc/p
+                 ;; FIXME: This is a hack because our parser doesn't handle trailing
+                 ;; newlines right.  But it doesn't handle preceding newlines right
+                 ;; either...
+                 (string-trim str "\n"
+                              #:repeat? #t
+                              #:left? #f #:right? #t))))
 
 (provide string->nquads)
 
