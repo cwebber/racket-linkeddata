@@ -479,7 +479,7 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
       (match char
         [(? (lambda (c)
               (or (char<=? c #\u0020)
-                  (member c '(#\< #\> #\" #\{ #\} #\| #\` #\\)))))
+                  (member c '(#\< #\> #\" #\{ #\} #\| #\^ #\` #\\)))))
          (display (char->uchar-str char) port)]
         [_ (write-char char port)]))
     (write-char #\> port))
