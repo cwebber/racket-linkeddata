@@ -236,7 +236,7 @@
       (pure
        (match maybe-graph
          ['()
-          (triple subject predicate object)]
+          (quad subject predicate object #f)]
          [(list graph)
           (quad subject predicate object graph)]))))
 
@@ -248,16 +248,15 @@
       eof/p
       (pure statements)))
 
-(define (triples->quads triples-or-quads)
-  (for/list ([t-or-q triples-or-quads])
-    (if (quad? t-or-q)
-        t-or-q
-        (quad (get-subject t-or-q)
-              (get-predicate t-or-q)
-              (get-object t-or-q)
-              #f))))
+(define (triple-quads->triples quads)
+  (for/list ([quad quads])
+    (if (get-graph quad)
+        quad
+        (triple (get-subject quad)
+                (get-predicate quad)
+                (get-object quad)))))
 
-(define (string->nquads str #:triples-to-quads? [triples-to-quads? #t])
+(define (string->nquads str #:triples-as-triples? [triples-as-triples? #f])
   (define result
     (parse-result!
      (parse-string nquads-doc/p
@@ -267,8 +266,8 @@
                    (string-trim str "\n"
                                 #:repeat? #t
                                 #:left? #f #:right? #t))))
-  (if triples-to-quads?
-      (triples->quads result)
+  (if triples-as-triples?
+      (triple-quads->triples result)
       result))
 
 (provide string->nquads)
@@ -332,7 +331,7 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
   (test-equal?
    "Test output of string->-nquads"
    (string->nquads example-nquads
-                   #:triples-to-quads? #f)
+                   #:triples-as-triples? #t)
    example-quads))
 
 (define (nquads-list->dataset nquads)
@@ -585,7 +584,7 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
    "nquads->string and restoring with tuple insertion attempt should restore original"
    (string->nquads
     (nquads->string problematic-triples)
-    #:triples-to-quads? #f)
+    #:triples-as-triples? #t)
    problematic-triples)
 
   (test-exn
