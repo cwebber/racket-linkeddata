@@ -24,8 +24,9 @@
      val]
     [#f
      (define issued-identifier
-       (string-append (issuer-prefix issuer)
-                      (number->string (issuer-counter ))))
+       (blank-node
+        (string-append (issuer-prefix issuer)
+                       (number->string (issuer-counter issuer)))))
      (set-issuer-issued!
       issuer (cons (cons identifier issued-identifier)
                    (issuer-issued issuer)))
@@ -97,7 +98,10 @@
   ;; 2
   (for ([quad input-dataset])
     ;; 2.1
-    (for ([blank-node (filter blank-node? quad)])
+    (for ([blank-node (filter blank-node? (list (get-subject quad)
+                                                (get-predicate quad)
+                                                (get-object quad)
+                                                (get-graph quad)))])
       (maybe-add-to-hash-list! blank-to-quads blank-node quad)))
   ;; 3
   (define non-normalized-identifiers
@@ -134,48 +138,48 @@
          ;; 5.4.5
          (set! simple #t)]
         ;; 5.4.1
-        [_ 'continue]))
-    ;; 6
-    (for ([hash (sort (hash-keys hash-to-blanks) string<?)])
-      (define identifier-list
-        (hash-ref hash-to-blanks hash))
-      ;; 6.1
-      (define hash-path-list
-        (for/fold ([hash-path-list '()])
-            ([identifier identifier-list])
-          (if (issued-identifier? identifier)
-              ;; 6.2.1
-              hash-path-list
-              (let (;; 6.2.2
-                    [temporary-issuer
-                     (make-issuer "_:b")])
-                (issue-identifier temporary-issuer identifier)
-                (cons (hash-n-degree-quads c14n-state temporary-issuer)
-                      hash-path-list)))))
-      ;; 6.3
-      (for ([result (sort (lambda (item1 item2)
-                            (string<? (ndq-result-hash item1)
-                                      (ndq-result-hash item2)))
-                          hash-path-list)])
-        ;; 6.3.1
-        (for ([existing-identifier
-               ;; .... I think this is right...?
-               (issuer-identifiers-in-order (ndq-result-issuer result))])
-          (issue-identifier (c14n-state-canonical-issuer c14n-state)
-                            existing-identifier))))
-    ;; 7
-    (for/fold ([normalized-dataset '()]
-               #:result (reverse normalized-dataset))
-        ([this-quad input-dataset])
-      (define (maybe-replace field)
-        (if (blank-node? field)
-            (issue-identifier field)
-            field))
-      (cons (quad (maybe-replace (get-subject this-quad))
-                  (maybe-replace (get-predicate this-quad))
-                  (maybe-replace (get-object this-quad))
-                  (maybe-replace (get-graph this-quad)))
-            normalized-dataset))))
+        [_ 'continue])))
+  ;; 6
+  (for ([hash (sort (hash-keys hash-to-blanks) string<?)])
+    (define identifier-list
+      (hash-ref hash-to-blanks hash))
+    ;; 6.1
+    (define hash-path-list
+      (for/fold ([hash-path-list '()])
+          ([identifier identifier-list])
+        (if (issued-identifier? identifier)
+            ;; 6.2.1
+            hash-path-list
+            (let (;; 6.2.2
+                  [temporary-issuer
+                   (make-issuer "_:b")])
+              (issue-identifier temporary-issuer identifier)
+              (cons (hash-n-degree-quads c14n-state temporary-issuer)
+                    hash-path-list)))))
+    ;; 6.3
+    (for ([result (sort (lambda (item1 item2)
+                          (string<? (ndq-result-hash item1)
+                                    (ndq-result-hash item2)))
+                        hash-path-list)])
+      ;; 6.3.1
+      (for ([existing-identifier
+             ;; .... I think this is right...?
+             (issuer-identifiers-in-order (ndq-result-issuer result))])
+        (issue-identifier (c14n-state-canonical-issuer c14n-state)
+                          existing-identifier))))
+  ;; 7
+  (for/fold ([normalized-dataset '()]
+             #:result (reverse normalized-dataset))
+      ([this-quad input-dataset])
+    (define (maybe-replace field)
+      (if (blank-node? field)
+          (issue-identifier (c14n-state-canonical-issuer c14n-state) field)
+          field))
+    (cons (quad (maybe-replace (get-subject this-quad))
+                (maybe-replace (get-predicate this-quad))
+                (maybe-replace (get-object this-quad))
+                (maybe-replace (get-graph this-quad)))
+          normalized-dataset)))
 
 (define (hash-first-degree-quads c14n-state reference-bnode-identifier
                                  #:hash-func [hash-func hash-sha256])
@@ -196,7 +200,7 @@
               (maybe-replace-bnode (get-predicate this-quad))
               (maybe-replace-bnode (get-object this-quad))
               (maybe-replace-bnode (get-graph this-quad))))
-      (cons (write-nquad adjusted-quad)
+      (cons (nquad->string adjusted-quad)
             nquads)))
   (hash-func (apply string-append nquads)))
 
