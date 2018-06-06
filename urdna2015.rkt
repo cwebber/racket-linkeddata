@@ -42,6 +42,11 @@
 (define (issuer-has-id? issuer identifier)
   (assoc identifier (issuer-issued issuer)))
 
+(define (issuer-ref issuer identifier)
+  (match (assoc identifier (issuer-issued issuer))
+    [(cons key val) val]
+    [#f #f]))
+
 (struct c14n-state
   (blank-to-quads hash-to-blanks canonical-issuer))
 
@@ -149,13 +154,13 @@
                       hash-path-list)))))
       ;; 6.3
       (for ([result (sort (lambda (item1 item2)
-                            (string<? (hash-ref item1 "hash")
-                                      (hash-ref item2 "hash")))
+                            (string<? (ndq-result-hash item1)
+                                      (ndq-result-hash item2)))
                           hash-path-list)])
         ;; 6.3.1
         (for ([existing-identifier
                ;; .... I think this is right...?
-               (issuer-identifiers-in-order (hash-ref result "issuer"))])
+               (issuer-identifiers-in-order (ndq-result-issuer result))])
           (issue-identifier (c14n-state-canonical-issuer c14n-state)
                             existing-identifier))))
     ;; 7
@@ -229,13 +234,14 @@
     (for/fold ([hash-to-related #hash()])
         ([quad (hash-ref (c14n-state-blank-to-quads c14n-state)
                          identifier)])
-      (define (handle-quad-component position val)
+      (define (handle-quad-component position component)
         (lambda (hash-to-related)
-          (if (and (blank-node? val)
-                   (not (equal? val identifier)))
-              (let* ([hash (hash-related-blank-node c14n-state val)]
+          (if (and (blank-node? component)
+                   (not (equal? component identifier)))
+              (let* ([hash (hash-related-blank-node c14n-state quad
+                                                    issuer position)]
                      [cur-hash-lst (hash-ref hash-to-related hash '())])
-                (hash-set hash-to-related hash (cons related cur-hash-lst)))
+                (hash-set hash-to-related hash (cons component cur-hash-lst)))
               hash-to-related)))
       (define handle-all
        (rcompose
@@ -248,7 +254,7 @@
     (set! data-to-hash
           (string-append data-to-hash str)))
   ;; 5
-  (for ([related-hash (sort (hash-keys hash-to-related) string<)])
+  (for ([related-hash (sort (hash-keys hash-to-related) string<?)])
     (define blank-node-list
       ;; in reverse because... cons
       (reverse (hash-ref hash-to-related related-hash)))
@@ -265,7 +271,7 @@
          (define path "")
          (define recursion-list '())
          ;; 5.4.4
-         (for (([related permutation]))
+         (for ([related permutation])
            ;; 5.4.4.1
            (if (issuer-has-id? c14n-issuer related)
                (set! path (string-append path related))
