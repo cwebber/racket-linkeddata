@@ -248,15 +248,28 @@
       eof/p
       (pure statements)))
 
-(define (string->nquads str)
-  (parse-result!
-   (parse-string nquads-doc/p
-                 ;; FIXME: This is a hack because our parser doesn't handle trailing
-                 ;; newlines right.  But it doesn't handle preceding newlines right
-                 ;; either...
-                 (string-trim str "\n"
-                              #:repeat? #t
-                              #:left? #f #:right? #t))))
+(define (triples->quads triples-or-quads)
+  (for/list ([t-or-q triples-or-quads])
+    (if (quad? t-or-q)
+        t-or-q
+        (quad (get-subject t-or-q)
+              (get-predicate t-or-q)
+              (get-object t-or-q)
+              #f))))
+
+(define (string->nquads str #:triples-to-quads? [triples-to-quads? #t])
+  (define result
+    (parse-result!
+     (parse-string nquads-doc/p
+                   ;; FIXME: This is a hack because our parser doesn't handle trailing
+                   ;; newlines right.  But it doesn't handle preceding newlines right
+                   ;; either...
+                   (string-trim str "\n"
+                                #:repeat? #t
+                                #:left? #f #:right? #t))))
+  (if triples-to-quads?
+      (triples->quads result)
+      result))
 
 (provide string->nquads)
 
@@ -318,7 +331,8 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
 
   (test-equal?
    "Test output of string->-nquads"
-   (string->nquads example-nquads)
+   (string->nquads example-nquads
+                   #:triples-to-quads? #f)
    example-quads))
 
 (define (nquads-list->dataset nquads)
@@ -570,7 +584,8 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
   (test-equal?
    "nquads->string and restoring with tuple insertion attempt should restore original"
    (string->nquads
-    (nquads->string problematic-triples))
+    (nquads->string problematic-triples)
+    #:triples-to-quads? #f)
    problematic-triples)
 
   (test-exn
