@@ -3,7 +3,7 @@
 (require data/monad data/applicative data/either
          megaparsack megaparsack/text
          (prefix-in sre- parser-tools/lex-sre)
-         "rdf.rkt")
+         linkeddata/rdf)
 
 (module+ test
   (require rackunit))

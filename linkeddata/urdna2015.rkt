@@ -1,7 +1,6 @@
 #lang racket
 
-(require "rdf.rkt"
-         "n-quads.rkt"
+(require linkeddata/rdf linkeddata/n-quads
          crypto)
 
 (define (hash-sha256 obj)
