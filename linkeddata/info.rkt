@@ -4,4 +4,5 @@
   '("base"
     "functional-lib"
     "megaparsack"
-    "crypto"))
+    "crypto"
+    "rackunit-lib"))
