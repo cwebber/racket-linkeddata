@@ -1,17 +1,38 @@
 #lang racket
 
+(require racket/generic)
+
+(define-generics triple-or-quad
+  (get-subject triple-or-quad)
+  (get-predicate triple-or-quad)
+  (get-object triple-or-quad))
+
+
 (struct triple
   (subject predicate object)
-  #:transparent)
+  #:transparent
+  #:methods gen:triple-or-quad
+  [(define (get-subject triple)
+     (triple-subject triple))
+   (define (get-predicate triple)
+     (triple-predicate triple))
+   (define (get-object triple)
+     (triple-object triple))])
 
-(struct quad triple (graph)
-        #:transparent)
+(struct quad (subject predicate object graph)
+        #:transparent
+        #:methods gen:triple-or-quad
+        [(define (get-subject quad)
+           (quad-subject quad))
+         (define (get-predicate quad)
+           (quad-predicate quad))
+         (define (get-object quad)
+           (quad-object quad))])
 
 (provide triple triple? quad quad?
-         (rename-out [triple-subject get-subject]
-                     [triple-predicate get-predicate]
-                     [triple-object get-object]
-                     [quad-graph get-graph]))
+         triple-subject triple-predicate triple-object
+         quad-subject quad-predicate quad-object quad-graph
+         get-subject get-predicate get-object)
 
 (struct blank-node (label)
         #:transparent)
