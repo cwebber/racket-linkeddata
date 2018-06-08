@@ -100,7 +100,7 @@
     (for ([blank-node (filter blank-node? (list (get-subject quad)
                                                 (get-predicate quad)
                                                 (get-object quad)
-                                                (get-graph quad)))])
+                                                (quad-graph quad)))])
       (maybe-add-to-hash-list! blank-to-quads blank-node quad)))
   ;; 3
   (define non-normalized-identifiers
@@ -177,7 +177,7 @@
     (cons (quad (maybe-replace (get-subject this-quad))
                 (maybe-replace (get-predicate this-quad))
                 (maybe-replace (get-object this-quad))
-                (maybe-replace (get-graph this-quad)))
+                (maybe-replace (quad-graph this-quad)))
           normalized-quads)))
 
 (define (hash-first-degree-quads c14n-state reference-bnode-identifier
@@ -198,7 +198,7 @@
         (quad (maybe-replace-bnode (get-subject this-quad))
               (maybe-replace-bnode (get-predicate this-quad))
               (maybe-replace-bnode (get-object this-quad))
-              (maybe-replace-bnode (get-graph this-quad))))
+              (maybe-replace-bnode (quad-graph this-quad))))
       (cons (nquad->string adjusted-quad)
             nquads)))
   (hash-func (apply string-append nquads)))
@@ -250,7 +250,7 @@
        (rcompose
         (handle-quad-component "s" (get-subject quad))
         (handle-quad-component "o" (get-object quad))
-        (handle-quad-component "g" (get-graph quad))))
+        (handle-quad-component "g" (quad-graph quad))))
       (handle-all hash-to-related)))
   (define data-to-hash "")
   (define (append-to-dth! str)

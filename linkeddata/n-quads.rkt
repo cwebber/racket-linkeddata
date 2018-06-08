@@ -249,7 +249,7 @@
 
 (define (triple-quads->triples quads)
   (for/list ([quad quads])
-    (if (get-graph quad)
+    (if (quad-graph quad)
         quad
         (triple (get-subject quad)
                 (get-predicate quad)
@@ -344,7 +344,7 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
           triple-or-quad))
     (define graph-label
       (if (quad? triple-or-quad)
-          (get-graph triple-or-quad)
+          (quad-graph triple-or-quad)
           #f))
     (define dataset-graph
       (hash-ref dataset graph-label (set)))
@@ -522,9 +522,9 @@ _:b0 <http://example.com/prop1> <http://example.com/Obj1> .
     (write-component (get-predicate obj))
     (display " " port)
     (write-component (get-object obj))
-    (when (get-graph obj)
+    (when (quad-graph obj)
       (display " " port)
-      (write-component (get-graph obj)))
+      (write-component (quad-graph obj)))
     (display " ." port))
   (match quad
     [(? quad?)
