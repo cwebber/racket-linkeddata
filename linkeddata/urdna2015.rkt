@@ -85,7 +85,7 @@
     (hash-set! hash key
                (cons val cur-list))))
 
-(define (normalization-algorithm input-dataset)
+(define (normalization-algorithm input-quads)
   (define c14n-state
     (initial-c14n-state))
   (define blank-to-quads
@@ -95,7 +95,7 @@
   (define (issued-identifier? identifier)
     (issuer-has-id? (c14n-state-canonical-issuer c14n-state) identifier))
   ;; 2
-  (for ([quad input-dataset])
+  (for ([quad input-quads])
     ;; 2.1
     (for ([blank-node (filter blank-node? (list (get-subject quad)
                                                 (get-predicate quad)
@@ -169,7 +169,7 @@
   ;; 7
   (for/fold ([normalized-dataset '()]
              #:result (reverse normalized-dataset))
-      ([this-quad input-dataset])
+      ([this-quad input-quads])
     (define (maybe-replace field)
       (if (blank-node? field)
           (issue-identifier (c14n-state-canonical-issuer c14n-state) field)
