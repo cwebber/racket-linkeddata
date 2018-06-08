@@ -2,7 +2,7 @@
 
 (require json
          rackunit
-         "json-ld.rkt")
+         linkeddata/json-ld)
 
 (define (read-tests-json-file filename)
   (call-with-input-file (string-append "jsonld-test-suite/" filename)
