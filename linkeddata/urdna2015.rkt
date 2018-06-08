@@ -167,8 +167,8 @@
         (issue-identifier (c14n-state-canonical-issuer c14n-state)
                           existing-identifier))))
   ;; 7
-  (for/fold ([normalized-dataset '()]
-             #:result (reverse normalized-dataset))
+  (for/fold ([normalized-quads '()]
+             #:result (reverse normalized-quads))
       ([this-quad input-quads])
     (define (maybe-replace field)
       (if (blank-node? field)
@@ -178,7 +178,7 @@
                 (maybe-replace (get-predicate this-quad))
                 (maybe-replace (get-object this-quad))
                 (maybe-replace (get-graph this-quad)))
-          normalized-dataset)))
+          normalized-quads)))
 
 (define (hash-first-degree-quads c14n-state reference-bnode-identifier
                                  #:hash-func [hash-func hash-sha256])
