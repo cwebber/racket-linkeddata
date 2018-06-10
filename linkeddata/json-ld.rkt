@@ -2493,7 +2493,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
           (hash-ref identifier-map identifier)
           ;; 2
           (let ([blank-node-identifier
-                 (format "_:b~a" counter)])
+                 (blank-node (format "_:b~a" counter))])
             ;; 3
             (set! counter (+ counter 1))
             ;; 4
