@@ -128,7 +128,7 @@
 (define (jsobj-ref obj key)
   (hash-ref obj key #f))
 
-(define (blank-node? obj)
+(define (blank-node-string? obj)
   "See if OBJ is a blank node (a string that starts with \"_:\")"
   (and (string? obj)
        (string-prefix? obj "_:")))
@@ -537,7 +537,7 @@ remaining context information to process from local-context"
                   ;; If either an absolute IRI or blank node,
                   ;; @vocab of result is set to vocab
                   ((or (absolute-uri? vocab)
-                       (blank-node? vocab))
+                       (blank-node-string? vocab))
                    (copy-active-context result [vocab vocab]))
                   (else
                    (error 'json-ld-error "invalid vocab mapping"))))
@@ -742,7 +742,7 @@ remaining context information to process from local-context"
                                                  #:defined defined)])
                       (when (not (or (json-ld-keyword? expanded-iri)
                                      (absolute-uri? expanded-iri)
-                                     (blank-node? expanded-iri)))
+                                     (blank-node-string? expanded-iri)))
                         (error 'json-ld-error
                                "invalid IRI mapping 4"))
                       (when (equal? expanded-iri "@context")
@@ -2358,11 +2358,11 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                       #:result (reverse result))
                ([item items])
              ;; 3.1
-             (cons (if (blank-node? item)
+             (cons (if (blank-node-string? item)
                        (blank-node-issuer item)
                        item)
                    result))]
-          [item (if (blank-node? item)
+          [item (if (blank-node-string? item)
                     (blank-node-issuer item)
                     item)])))
      (cond
@@ -2395,7 +2395,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
              ;; 6.1
              (let ([id (hash-ref element "@id")])
                (hash-remove! element "@id")
-               (when (blank-node? id)
+               (when (blank-node-string? id)
                  (set! id (blank-node-issuer id)))
                id)
              ;; 6.2
@@ -2472,7 +2472,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
        (for ([property (sort (hash-keys element) string<?)])
          (define value (hash-ref element property))
          ;; 6.11.1
-         (when (blank-node? property)
+         (when (blank-node-string? property)
            (set! property (blank-node-issuer property)))
          ;; 6.11.2
          (when (not (hash-has-key? node property))
