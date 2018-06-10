@@ -37,7 +37,11 @@
 (struct blank-node (label)
         #:transparent)
 
-(provide blank-node blank-node? blank-node-label)
+(define (blank-node->string bnode)
+  (string-append "_:" (blank-node-label bnode)))
+
+(provide blank-node blank-node? blank-node-label
+         blank-node->string)
 
 ;; https://www.w3.org/TR/rdf11-concepts/#dfn-literal
 (struct literal
