@@ -2541,7 +2541,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
               ;; @@: Do we need to wrap this in some iri object?
               (for/fold ([triples triples])
                   ([type values])
-                (cons (triple subject rdf:type type) values))]
+                (cons (triple subject rdf:type type) triples))]
              ;; 4.3.2.2
              [(keyword? property)
               triples]
