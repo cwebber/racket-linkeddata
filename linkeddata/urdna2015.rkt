@@ -85,7 +85,7 @@
     (hash-set! hash key
                (cons val cur-list))))
 
-(define (normalization-algorithm input-quads)
+(define (canonize-quads input-quads)
   (define c14n-state
     (initial-c14n-state))
   (define blank-to-quads
@@ -179,6 +179,8 @@
                 (maybe-replace (get-object this-quad))
                 (maybe-replace (quad-graph this-quad)))
           normalized-quads)))
+
+(provide canonize-quads)
 
 (define (hash-first-degree-quads c14n-state reference-bnode-identifier
                                  #:hash-func [hash-func hash-sha256])
