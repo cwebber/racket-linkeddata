@@ -2696,3 +2696,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
            [(list first-bnode _ ...)
             first-bnode]
            ['() rdf:nil])))))
+
+
+
+(require linkeddata/urdna2015)
+
+(define (json-ld->urdna2015-quads element)
+  (canonize-quads (dataset->quads (json-ld->rdf element))))
