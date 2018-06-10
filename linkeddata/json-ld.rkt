@@ -2504,7 +2504,15 @@ Does a multi-value-return of (expanded-iri active-context defined)"
             blank-node-identifier)))))
 
 
-(require "rdf.rkt")
+(require linkeddata/rdf)
+
+(define (string-or-bnode<? x y)
+  (define (as-str obj)
+    (match obj
+      [(? blank-node?) (blank-node->string obj)]
+      [(? string?) obj]))
+  (string<? (as-str x)
+            (as-str y)))
 
 (define (json-ld->rdf element
                       #:produce-generalized-rdf? [produce-generalized-rdf? #f]
@@ -2518,14 +2526,14 @@ Does a multi-value-return of (expanded-iri active-context defined)"
   (define (get-triples graph)
     (for/fold ([triples '()]
                #:result (reverse triples))
-        ([subject (sort (hash-keys graph) string<?)])
+        ([subject (sort (hash-keys graph) string-or-bnode<?)])
       (define node (hash-ref graph subject))
       (if (relative-uri? subject)
           ;; 4.3.1, continue to next subject / node pair
           triples
           ;; 4.3.2
           (for/fold ([triples triples])
-              ([property (sort (hash-keys node) string<?)])
+              ([property (sort (hash-keys node) string-or-bnode<?)])
             (define values (hash-ref node property))
             (cond
              ;; 4.3.2.1
@@ -2571,7 +2579,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          [node-map (make-hash `(("@default" . ,(make-hash))))])
     (node-map-generation! element node-map blank-node-issuer)
     (for/fold ([dataset #hash()])
-        ([graph-name (sort (hash-keys node-map) string<?)])
+        ([graph-name (sort (hash-keys node-map) string-or-bnode<?)])
       (define graph (hash-ref node-map graph-name))
       (if (and (not (equal? graph-name "@default"))
                (relative-uri? graph-name))
