@@ -83,3 +83,16 @@
 (provide rdf-uri rdf:type rdf:langString rdf:nil rdf:first rdf:rest
          rdfs-uri
          xsd-uri xsd:boolean xsd:double xsd:integer xsd:string)
+
+(define (dataset->quads dataset)
+  (for/fold ([quads '()])
+      ([(graph-name triples) dataset])
+    (for/fold ([quads quads])
+        ([triple triples])
+      (cons (quad (triple-subject triple)
+                  (triple-predicate triple)
+                  (triple-object triple)
+                  graph-name)
+            quads))))
+
+(provide dataset->quads)
