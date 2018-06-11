@@ -80,8 +80,10 @@
                     port->string
                     '("Accept: application/ld+json")))))
 
-(define *context-loader*
+(define context-loader
   (make-parameter basic-deref-remote-context))
+
+(provide context-loader)
 
 (define (load-context iri)
   ;; TODO: Eventually we'll need to support more than just http URIs..
@@ -90,7 +92,7 @@
            ((? string?)
             (string->url iri))
            ((? url?) iri))])
-    ((*context-loader*) iri)))
+    ((context-loader) iri)))
 
 (define (absolute-uri? obj)
   "Check if OBJ is an absolute uri or not."
