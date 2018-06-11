@@ -487,12 +487,13 @@ remaining context information to process from local-context"
             (let ((derefed-context (load-context context))
                   (remote-contexts (cons context remote-contexts)))
               (when (not (and (jsobj? derefed-context)
-                              (jsobj-ref derefed-context "@context")))
+                              (jsobj-ref derefed-context '@context)))
+                
                 (error 'json-ld-error
                        "invalid remote context"))
               ;; We made it this far, so recurse on the derefed context
               ;; then continue with that updated result
-              (let* ((context (jsobj-ref derefed-context "@context"))
+              (let* ((context (jsobj-ref derefed-context '@context))
                      (result (process-context result context
                                               remote-contexts)))
                 (loop result next-contexts remote-contexts)))))
