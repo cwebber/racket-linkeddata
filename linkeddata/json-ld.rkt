@@ -69,8 +69,8 @@
  - #:LOAD-UNKNOWN-URLS? will load URLs even if they aren't in the URL-MAP.  If
    this is set to #f this will throw an error for URLs not in url-map.
  - #:CACHE-EXTERNALLY-LOADED? will cache results from unknown URLs
- - #:FALLBACK-LOADER if provided will be called if no match is found
-   and LOAD-UNKNOWN_URLS? is #f"
+ - #:FALLBACK-LOADER if provided will be called if no match is found.
+   Setting this means that LOAD-UNKNOWN-URLS? is effectively ignored."
   ;; Why not just use a mutable hash?  Thread safety... see
   ;; "Caveats concerning concurrent modification"
   ;;   https://docs.racket-lang.org/reference/hashtables.html
@@ -82,7 +82,8 @@
        [(and cache-externally-loaded?
              (hash-has-key? cache url))
         (hash-ref cache url)]
-       [load-unknown-urls?
+       [(and load-unknown-urls?
+             (not fallback-loader))
         (define result
           (string->jsexpr
            (call/input-url url (curry get-pure-port #:redirections 5)
