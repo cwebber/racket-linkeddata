@@ -58,32 +58,42 @@
 (define initial-active-context
   (active-context 'null #hash() 'null undefined undefined))
 
-(define *context-cache*
-  (box #hash()))
-(define (context-cache-ref url)
-  (hash-ref (unbox *context-cache*) url #f))
-(define (context-cache-set! url val)
-  (set-box! *context-cache*
-            (hash-set (unbox *context-cache*) url val)))
 
-(define-syntax-rule (get-or-cache-context url body ...)
-  (or (context-cache-ref url)
-      (let ([result (begin body ...)])
-        (context-cache-set! url result)
-        result)))
+(define (simple-context-loader #:url-map [url-map #hash()]
+                               #:load-unknown-urls? [load-unknown-urls? #t]
+                               #:cache-externally-loaded? [cache-externally-loaded? #t])
+  "Make a simple context loader.
 
-(define (basic-deref-remote-context iri)
-  (get-or-cache-context
-   iri
-   (string->jsexpr
-    (call/input-url iri (curry get-pure-port #:redirections 5)
-                    port->string
-                    '("Accept: application/ld+json")))))
+ - #:URL-MAP gives a list of existing well known URLs that we should resolve to.
+ - #:LOAD-UNKNOWN-URLS? will load URLs even if they aren't in the URL-MAP.  If
+   this is set to #f this will throw an error for URLs not in url-map.
+ - #:CACHE-EXTERNALLY-LOADED? will cache results from unknown URLs"
+  ;; Why not just use a mutable hash?  Thread safety... see
+  ;; "Caveats concerning concurrent modification"
+  ;;   https://docs.racket-lang.org/reference/hashtables.html
+  (let ([cache #hash()])
+    (lambda (url)
+      (cond
+       [(hash-has-key? url-map url)
+        (hash-ref url-map url)]
+       [(and cache-externally-loaded?
+             (hash-has-key? cache url))
+        (hash-ref cache url)]
+       [else
+        (define result
+          (string->jsexpr
+           (call/input-url url (curry get-pure-port #:redirections 5)
+                           port->string
+                           '("Accept: application/ld+json"))))
+        (when cache-externally-loaded?
+          (set! cache (hash-set cache url result)))
+        result]))))
 
+;; Context loader parameter
 (define context-loader
-  (make-parameter basic-deref-remote-context))
+  (make-parameter (simple-context-loader)))
 
-(provide context-loader)
+(provide simple-context-loader context-loader)
 
 (define (load-context iri)
   ;; TODO: Eventually we'll need to support more than just http URIs..
