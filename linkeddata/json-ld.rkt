@@ -79,7 +79,7 @@
        [(and cache-externally-loaded?
              (hash-has-key? cache url))
         (hash-ref cache url)]
-       [else
+       [load-unknown-urls?
         (define result
           (string->jsexpr
            (call/input-url url (curry get-pure-port #:redirections 5)
@@ -87,7 +87,9 @@
                            '("Accept: application/ld+json"))))
         (when cache-externally-loaded?
           (set! cache (hash-set cache url result)))
-        result]))))
+        result]
+       [else
+        (error "url not found and loader set to not load unknown URLs." url)]))))
 
 ;; Context loader parameter
 (define context-loader
