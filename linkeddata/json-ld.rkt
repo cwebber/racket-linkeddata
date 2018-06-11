@@ -61,13 +61,16 @@
 
 (define (simple-context-loader #:url-map [url-map #hash()]
                                #:load-unknown-urls? [load-unknown-urls? #t]
-                               #:cache-externally-loaded? [cache-externally-loaded? #t])
+                               #:cache-externally-loaded? [cache-externally-loaded? #t]
+                               #:fallback-loader [fallback-loader #f])
   "Make a simple context loader.
 
  - #:URL-MAP gives a list of existing well known URLs that we should resolve to.
  - #:LOAD-UNKNOWN-URLS? will load URLs even if they aren't in the URL-MAP.  If
    this is set to #f this will throw an error for URLs not in url-map.
- - #:CACHE-EXTERNALLY-LOADED? will cache results from unknown URLs"
+ - #:CACHE-EXTERNALLY-LOADED? will cache results from unknown URLs
+ - #:FALLBACK-LOADER if provided will be called if no match is found
+   and LOAD-UNKNOWN_URLS? is #f"
   ;; Why not just use a mutable hash?  Thread safety... see
   ;; "Caveats concerning concurrent modification"
   ;;   https://docs.racket-lang.org/reference/hashtables.html
@@ -88,6 +91,8 @@
         (when cache-externally-loaded?
           (set! cache (hash-set cache url result)))
         result]
+       [fallback-loader
+        (fallback-loader uri)]
        [else
         (error "url not found and loader set to not load unknown URLs." url)]))))
 
