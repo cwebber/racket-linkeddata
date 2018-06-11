@@ -2594,7 +2594,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                           (cons (triple subject property result)
                                 triples)))))])))))
 
-  (let* ([element (expand-jsonld element)]
+  (let* ([element (expand-jsonld element #:expand-context expand-context)]
          [element (convert-in element)]
          [node-map (make-hash `(("@default" . ,(make-hash))))])
     (node-map-generation! element node-map blank-node-issuer)
