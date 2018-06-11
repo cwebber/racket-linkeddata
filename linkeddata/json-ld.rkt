@@ -93,7 +93,7 @@
           (set! cache (hash-set cache url result)))
         result]
        [fallback-loader
-        (fallback-loader uri)]
+        (fallback-loader url)]
        [else
         (error "url not found and loader set to not load unknown URLs." url)]))))
 
