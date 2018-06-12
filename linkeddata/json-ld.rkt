@@ -2722,9 +2722,13 @@ Does a multi-value-return of (expanded-iri active-context defined)"
 
 
 
-(require linkeddata/urdna2015)
+(require linkeddata/urdna2015 linkeddata/n-quads)
 
 (define (json-ld->urdna2015-quads element)
   (canonize-quads (dataset->quads (json-ld->rdf element))))
 
-(provide json-ld->urdna2015-quads)
+(define (json-ld->urdna2015-nquads-string element)
+  (nquads->string
+   (json-ld->urdna2015-quads element)))
+
+(provide json-ld->urdna2015-quads json-ld->urdna2015-nquads-string)
