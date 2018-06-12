@@ -110,7 +110,10 @@
            ((? string?)
             (string->url iri))
            ((? url?) iri))])
-    ((context-loader) iri)))
+    ;; TODO: Should we put this in the loader?  That would be faster
+    ;; but slightly less clean, since it would require every loader to perform
+    ;; that logic.
+    (symbol-hash->string-hash ((context-loader) iri))))
 
 (define (absolute-uri? obj)
   "Check if OBJ is an absolute uri or not."
@@ -487,13 +490,12 @@ remaining context information to process from local-context"
             (let ((derefed-context (load-context context))
                   (remote-contexts (cons context remote-contexts)))
               (when (not (and (jsobj? derefed-context)
-                              (jsobj-ref derefed-context '@context)))
-                
+                              (jsobj-ref derefed-context "@context")))
                 (error 'json-ld-error
                        "invalid remote context"))
               ;; We made it this far, so recurse on the derefed context
               ;; then continue with that updated result
-              (let* ((context (jsobj-ref derefed-context '@context))
+              (let* ((context (jsobj-ref derefed-context "@context"))
                      (result (process-context result context
                                               remote-contexts)))
                 (loop result next-contexts remote-contexts)))))
