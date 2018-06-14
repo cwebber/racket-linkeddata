@@ -82,6 +82,7 @@
 
 (provide lds-sign-jsonld)
 
+;; See https://github.com/w3c-dvcg/ld-signatures/issues/19
 #;(define (lds-sign-quads document sig-options private-key
                         [suite rsa-signature-2018-suite])
   "Sign a list of n-quads."
