@@ -58,6 +58,13 @@
 (define initial-active-context
   (active-context 'null #hash() 'null undefined undefined))
 
+(define (http-get-jsonld url)
+  (string->jsexpr
+   (call/input-url url (curry get-pure-port #:redirections 5)
+                   port->string
+                   '("Accept: application/ld+json"))))
+
+(provide http-get-jsonld)
 
 (define (simple-context-loader #:url-map [url-map #hash()]
                                #:load-unknown-urls? [load-unknown-urls? #t]
@@ -85,10 +92,7 @@
        [(and load-unknown-urls?
              (not fallback-loader))
         (define result
-          (string->jsexpr
-           (call/input-url url (curry get-pure-port #:redirections 5)
-                           port->string
-                           '("Accept: application/ld+json"))))
+          (http-get-jsonld url))
         (when cache-externally-loaded?
           (set! cache (hash-set cache url result)))
         result]
