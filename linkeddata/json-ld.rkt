@@ -160,6 +160,8 @@
   (and (string? obj)
        (string-prefix? obj "_:")))
 
+(provide blank-node-string?)
+
 (define (list-object? obj)
   "A list object is a JSON object that has a @list member"
   (and (jsobj? obj)
