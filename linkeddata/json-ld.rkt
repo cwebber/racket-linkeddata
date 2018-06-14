@@ -58,7 +58,11 @@
 (define initial-active-context
   (active-context 'null #hash() 'null undefined undefined))
 
-(define (http-get-jsonld url)
+(define (http-get-jsonld url #:schemes [schemes '("http" "https")])
+  ;; call/input-url will happily read file:// urls from disk so...
+  ;; we need to prevent that :P
+  (unless (member (url-scheme url) schemes)
+    (error "Unacceptable url scheme" (url-scheme url)))
   (string->jsexpr
    (call/input-url url (curry get-pure-port #:redirections 5)
                    port->string
