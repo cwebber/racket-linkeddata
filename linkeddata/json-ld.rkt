@@ -58,6 +58,11 @@
 (define initial-active-context
   (active-context 'null #hash() 'null undefined undefined))
 
+;; FIXME: There's a risk of a confused deputy attack if someone provides
+;;   a localhost URI and someone is doing something like running a
+;;   "localhost-only" context URI.  So we need to protect against
+;;   that while also not screwing over development environments.
+;;   This is super hard to do.  If only we lived in an ocap world :<
 (define (http-get-jsonld url #:schemes [schemes '("http" "https")])
   ;; call/input-url will happily read file:// urls from disk so...
   ;; we need to prevent that :P
