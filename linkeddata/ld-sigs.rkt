@@ -73,7 +73,7 @@
 ;; signature json* seems just very... weird to me.
 
 (define (lds-sign-jsonld document sig-options private-key
-                         [suite rsa-signature-2018-suite]
+                         #:suite [suite rsa-signature-2018-suite]
                          #:legacy-signature-field? [legacy-signature-field? #f])
   "Sign a json-ld document."
   (lds-sign-main document (suite-canonize-jsonld suite document)
