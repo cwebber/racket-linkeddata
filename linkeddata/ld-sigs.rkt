@@ -80,6 +80,8 @@
                  sig-options private-key suite
                  #:legacy-signature-field? legacy-signature-field?))
 
+(provide lds-sign-jsonld)
+
 #;(define (lds-sign-quads document sig-options private-key
                         [suite rsa-signature-2018-suite])
   "Sign a list of n-quads."
@@ -183,4 +185,5 @@
     ;; (RSA + SHA-256) or EdDsa (Ed25519 which uses SHA-512).
     ;; ^--- response to that spectext: Yeah, we use digest/sign
     output))
+
 
