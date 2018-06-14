@@ -10,6 +10,14 @@
          net/base64)
 
 (define security-context-url "https://w3id.org/security/v1")
+(define sec-vocab-url "https://w3id.org/security#")
+(define (sec-term term)
+  (string-append sec-vocab-url term))
+
+(define sec:proof
+  (sec-term "proof"))
+(define sec:signature
+  (sec-term "signature"))
 
 (define security-context
   (call-with-input-file (build-path "contexts" "security.jsonld")
@@ -99,11 +107,22 @@
   ;; TODO: Note, I have no idea how to do this if it's not json right now.
   ;;   It seems we need to know the root of the graph.
   ;;   See https://github.com/w3c-dvcg/ld-signatures/issues/19
-  (define output
-    (hash-set document (if legacy-signature-field? 'signature 'proof)
+  (define expanded-document
+    (car (expand-jsonld document)))
+
+  (define pre-compacted-output
+    (hash-set expanded-document (if legacy-signature-field?
+                                    (string->symbol sec:signature)
+                                    (string->symbol sec:proof))
               (suite-make-signature-object suite signature-value sig-options)))
+
+  ;; TODO: Compact it again with its original context... and the context of
+  ;; the proof?  Or, look again at what pyld_sig is doing here
+  ;; IMO if the toplevel context doesn't support the security vocabulary
+  ;; that's its problem.
+
   ;; 6: Return output as the signed linked data document.
-  output)
+  (compact-jsonld pre-compacted-output (hash-ref document '@context #hasheq())))
 
 (define (create-verify-hash canonicalized-document suite sig-options)
   ;; 1: Let options be a copy of input options. 
