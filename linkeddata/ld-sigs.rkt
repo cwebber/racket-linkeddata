@@ -71,7 +71,7 @@
   (lambda (signature-value sig-options)
     (let* ([result (hash-set sig-options sec:signatureValue-sym signature-value)]
            [result (hash-set result '@type type)])
-      result)))
+      (expand-jsonld result #:expand-context security-context-url))))
 
 (define rsa-signature-2018-suite
   (suite
