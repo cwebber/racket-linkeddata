@@ -33,6 +33,8 @@
   "Used to see if some record type fields have been defined yet"
   (not (undefined? val)))
 
+(define json-ld-error error)
+
 (struct active-context
   (;; Base URI, if any
    ;;   equiv to "@base" in jsonld.py
@@ -499,15 +501,13 @@ remaining context information to process from local-context"
          ((? string?)
           (let ([context (append-to-base context)])
             (when (member context remote-contexts equal-including-checking-base?)
-              (error 'json-ld-error
-                     "recursive context inclusion"
-                     context))
+              (json-ld-error "recursive context inclusion"
+                             context))
             (let ((derefed-context (load-context context))
                   (remote-contexts (cons context remote-contexts)))
               (when (not (and (jsobj? derefed-context)
                               (jsobj-ref derefed-context "@context")))
-                (error 'json-ld-error
-                       "invalid remote context"))
+                (json-ld-error "invalid remote context"))
               ;; We made it this far, so recurse on the derefed context
               ;; then continue with that updated result
               (let* ((context (jsobj-ref derefed-context "@context"))
@@ -557,14 +557,13 @@ remaining context information to process from local-context"
                        ;; Otherwise, this is an error...
                        ;; "Value of @base in a @context must be an
                        ;;  absolute IRI or empty string."
-                       (error 'json-ld-error
-                              ;; @@: context vs result seems kinda vague
-                              ;;   to a user through this whole function, maybe
-                              "invalid base IRI" context
-                              result relative-base-uri)))
+                       (json-ld-error
+                        ;; @@: context vs result seems kinda vague
+                        ;;   to a user through this whole function, maybe
+                        "invalid base IRI" context
+                        result relative-base-uri)))
                   (invalid-base-value
-                   (error 'json-ld-error
-                          "invalid base IRI" invalid-base-value)))
+                   (json-ld-error "invalid base IRI" invalid-base-value)))
                 ;; Otherwise, return unmodified result
                 result))
 
@@ -578,7 +577,7 @@ remaining context information to process from local-context"
                        (blank-node-string? vocab))
                    (copy-active-context result [vocab vocab]))
                   (else
-                   (error 'json-ld-error "invalid vocab mapping"))))
+                   (json-ld-error "invalid vocab mapping"))))
 
           (define (modify-result-from-language result language)
             (cond ((eq? language 'null)
@@ -588,7 +587,7 @@ remaining context information to process from local-context"
                    (copy-active-context result [language
                                                 (string-downcase language)]))
                   (else
-                   (error 'json-ld-error "invalid default language"))))
+                   (json-ld-error "invalid default language"))))
 
           (define (build-result)
             (define (jld-keyword-processor keyword func)
@@ -623,9 +622,8 @@ remaining context information to process from local-context"
            next-contexts remote-contexts))
 
          ;; 3.3: Anything else at this point is an error...
-         (_ (error 'json-ld-error
-                   "invalid local context"
-                   context)))))))
+         (_ (json-ld-error "invalid local context"
+                           context)))))))
 
 
 ;; Algorithm 6.2
@@ -642,12 +640,11 @@ remaining context information to process from local-context"
     ;; If term definition is false, that means term definition
     ;; started but never completed... a cycle!  Abort, abort!
     ((cons _ #f)
-     (error 'json-ld-error "cyclic IRI mapping"))
+     (json-ld-error "cyclic IRI mapping"))
     ;; Not referenced yet in defined, continue
     (#f
      (when (json-ld-keyword? term)
-       (error 'json-ld-error
-              "keyword redefinition"))
+       (json-ld-error "keyword redefinition"))
 
      (let (;; Set defined's value for this key to false, indicating
            ;; that we started processing 
@@ -676,8 +673,7 @@ remaining context information to process from local-context"
                              ((jsobj? value)
                               value)
                              (else
-                              (error 'json-ld-error
-                                     "invalid term definition")))))
+                              (json-ld-error "invalid term definition")))))
            (call/ec
             (lambda (return)
               (define (definition-handle-type definition active-context defined)
@@ -698,8 +694,7 @@ remaining context information to process from local-context"
                       active-context defined)))
                   ;; Otherwise, it's an error!
                   (_
-                   (error 'json-ld-error
-                          "invalid type mapping"))))
+                   (json-ld-error "invalid type mapping"))))
 
               ;; sec 11
               (define (definition-handle-reverse definition active-context defined)
@@ -709,8 +704,7 @@ remaining context information to process from local-context"
                   ;; value must be a string
                   ((cons _ (? string? reverse-prop))
                    (when (jsobj-assoc value "@id")
-                     (error 'json-ld-error
-                            "invalid reverse property"))
+                     (json-ld-error "invalid reverse property"))
 
                    (let-values ([(expanded-iri active-context _)
                                  (iri-expansion active-context reverse-prop
@@ -719,8 +713,7 @@ remaining context information to process from local-context"
                                                 #:defined defined)])
                      (when (relative-uri? expanded-iri)
                        ;; Uhoh
-                       (error 'json-ld-error
-                              "invalid IRI mapping 1"))
+                       (json-ld-error "invalid IRI mapping 1"))
 
                      (let ((definition
                              (hash-set
@@ -735,8 +728,7 @@ remaining context information to process from local-context"
                          term definition active-context)
                         (hash-cons term #t defined)))))
                   (_
-                   (error 'json-ld-error
-                          "invalid IRI mapping 2"))))
+                   (json-ld-error "invalid IRI mapping 2"))))
 
               ;; Helper method for 11
               (define (%definition-handle-container-reverse definition)
@@ -750,8 +742,7 @@ remaining context information to process from local-context"
                    (hash-set definition "@container" container))
                   ;; Uhoh, looks like that wasn't valid...
                   (_
-                   (error 'json-ld-error
-                          "invalid reverse property"))))
+                   (json-ld-error "invalid reverse property"))))
 
               ;; 12
               (define (definition-set-reverse-to-false definition active-context defined)
@@ -770,8 +761,7 @@ remaining context information to process from local-context"
                                     term)))
                   (let ((id-val (jsobj-ref value "@id")))
                     (when (not (string? id-val))
-                      (error 'json-ld-error
-                             "invalid IRI mapping 3"))
+                      (json-ld-error "invalid IRI mapping 3"))
 
                     (let-values ([(expanded-iri active-context defined)
                                   (iri-expansion active-context id-val
@@ -781,11 +771,9 @@ remaining context information to process from local-context"
                       (when (not (or (json-ld-keyword? expanded-iri)
                                      (absolute-uri? expanded-iri)
                                      (blank-node-string? expanded-iri)))
-                        (error 'json-ld-error
-                               "invalid IRI mapping 4"))
+                        (json-ld-error "invalid IRI mapping 4"))
                       (when (equal? expanded-iri "@context")
-                        (error 'json-ld-error
-                               " invalid keyword alias"))
+                        (json-ld-error "invalid keyword alias"))
 
                       ;; otherwise, onwards and upwards
                       (values (hash-set definition "@id" expanded-iri)
@@ -830,8 +818,7 @@ remaining context information to process from local-context"
                           active-context defined))
 
                  (else
-                  (error 'json-ld-error
-                         "invalid IRI mapping 5"))))
+                  (json-ld-error "invalid IRI mapping 5"))))
 
               ;; 16
               (define (definition-handle-container definition active-context defined)
@@ -843,8 +830,7 @@ remaining context information to process from local-context"
                         (when (not (member container
                                            '("@list" "@set"
                                              "@index" "@language")))
-                          (error 'json-ld-error
-                                 "invalid container mapping"))
+                          (json-ld-error "invalid container mapping"))
                         (values (hash-set definition "@container" container)
                                 active-context defined))
                       ;; otherwise, no adjustment needed apparently
@@ -858,8 +844,7 @@ remaining context information to process from local-context"
                       ;; set it in the definition
                       (let ((language (cdr value-language)))
                         (when (not (or (eq? language 'null) (string? language)))
-                          (error 'json-ld-error
-                                 "invalid language mapping"))
+                          (json-ld-error "invalid language mapping"))
                         (values (hash-set definition "@language" language)
                                 active-context defined))
                       ;; otherwise, no adjustment needed apparently
@@ -1002,8 +987,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                    "@list")))
                          (or (listy? expanded-item)
                              (list-object? expanded-item)))
-                (error 'json-error
-                       "list of lists"))
+                (json-ld-error "list of lists"))
 
               (match expanded-item
                 ((? listy? _)
@@ -1051,12 +1035,10 @@ Does a multi-value-return of (expanded-iri active-context defined)"
          ;; 7.4... get ready for a doosy
          ((json-ld-keyword? expanded-property)
           (when (equal? active-property "reverse")
-            (error 'json-ld-error
-                   "invalid reverse property map"))
+            (json-ld-error "invalid reverse property map"))
           ;; already defined, uhoh
           (when (jsobj-assoc result expanded-property)
-            (error 'json-ld-error
-                   "colliding keywords"))
+            (json-ld-error "colliding keywords"))
 
           (call-with-values
               (lambda ()
@@ -1064,8 +1046,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                   ;; 7.4.3
                   ("@id"
                    (when (not (string? value))
-                     (error 'json-ld-error
-                            "invalid @id value"))
+                     (json-ld-error "invalid @id value"))
                    ;; calls to iri-expansion also multi-value-return "defined"
                    ;; as well, but as the third argument, we ignore it
                    (iri-expansion active-context value
@@ -1089,7 +1070,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                                 #:document-relative #t))
                              (lambda (expanded active-context [%ignored #f])
                                (lp remaining-items expanded active-context)))))))
-                     (_ (error 'json-ld-error "invalid type value"))))
+                     (_ (json-ld-error "invalid type value"))))
 
                   ;; 7.4.5
                   ("@graph"
@@ -1105,21 +1086,21 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                      ;; otherwise, expanded value *is* value!
                      ((? scalar?)
                       (values value active-context))
-                     (_ (error 'json-ld-error #:code "invalid value object"))))
+                     (_ (json-ld-error #:code "invalid value object"))))
 
                   ;; 7.4.7
                   ("@language"
                    (match value
                      ((? string?)
                       (values (string-downcase value) active-context))
-                     (_ (error 'json-ld-error #:code "invalid language-tagged string"))))
+                     (_ (json-ld-error #:code "invalid language-tagged string"))))
 
                   ;; 7.4.8
                   ("@index"
                    (match value
                      ((? string?)
                       (values value active-context))
-                     (_ (error 'json-ld-error #:code "invalid @index value"))))
+                     (_ (json-ld-error #:code "invalid @index value"))))
 
                   ;; 7.4.9
                   ("@list"
@@ -1131,7 +1112,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                  (expand-element active-context active-property value)])
                      ;; oops!  no lists of lists
                      (when (list-object? expanded-value)
-                       (error 'json-ld-error "list of lists"))
+                       (json-ld-error "list of lists"))
                      ;; otherwise, continue with this as expanded value
                      ;; @@: I'm not totally sure if this is right.  We added the
                      ;;   wrap-in-list thing later... it's not specified in the
@@ -1150,7 +1131,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                   ;; I'm so sorry this is so complicated
                   ("@reverse"
                    (when (not (jsobj? value))
-                     (error 'json-ld-error "invalid @reverse value"))
+                     (json-ld-error "invalid @reverse value"))
 
                    ;; 7.4.11.1
                    (define-values (expanded-value _)
@@ -1163,7 +1144,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                              (define double-reverse-val (hash-ref expanded-value "@reverse"))
                              ;; Not said in the spec but it only makes sense, right?
                              (when (not (jsobj? double-reverse-val))
-                               (error 'json-ld-error "invalid @reverse value"))
+                               (json-ld-error "invalid @reverse value"))
                              (sequence-fold
                               (lambda (result property item)
                                 (let ([prop-member (hash-ref result property '())])
@@ -1186,8 +1167,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                    (lambda (item reverse-map)
                                      (when (or (value-object? item)
                                                (list-object? item))
-                                       (error 'json-ld-error
-                                              "invalid reverse property value"))
+                                       (json-ld-error
+                                        "invalid reverse property value"))
                                      (define prop-member
                                        (hash-ref reverse-map property '()))
                                      (hash-set reverse-map property
@@ -1221,7 +1202,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                  (foldr
                   (lambda (item expanded-value)
                     (when (not (string? item))
-                      (error 'json-ld-error "invalid language map value"))
+                      (json-ld-error "invalid language map value"))
                     (cons
                      `#hash(("@value" . ,item)
                             ("@language" . ,(string-downcase
@@ -1326,7 +1307,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                (lambda (item result)
                  (when (or (value-object? item)
                            (list-object? item))
-                   (error 'json-ld-error "invalid reverse property value"))
+                   (json-ld-error "invalid reverse property value"))
                  (hash-set result "@reverse"
                            (hash-set reverse-map expanded-property
                                      (cons item
@@ -1385,17 +1366,17 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                               (_ #f)))
                        (and (jsobj-assoc result "@language")
                             (jsobj-assoc result "@type")))
-               (error 'json-ld-error "invalid value object"))
+               (json-ld-error "invalid value object"))
 
              (let ((result-value (jsobj-ref result "@value")))
                (cond ((eq? result-value 'null)
                       (return 'null active-context))
                      ((and (not (string? result-value))
                            (jsobj-assoc result "@language"))
-                      (error 'json-ld-error "invalid typed value"))
+                      (json-ld-error "invalid typed value"))
                      ((and (jsobj-assoc result "@type")
                            (relative-uri? (jsobj-ref result "@type")))
-                      (error 'json-ld-error "invalid typed value"))
+                      (json-ld-error "invalid typed value"))
                      (else result))))
             ;; sec 9
             ;; @@: unnecessarily pulling type out of result several times,
@@ -1414,7 +1395,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                (when (not (or (eqv? num-members 1)
                               (and (jsobj-assoc result "@index")
                                    (eqv? num-members 2))))
-                 (error 'json-ld-error "invalid set or list object"))
+                 (json-ld-error "invalid set or list object"))
 
                ;; 10.2
                (let ((set-mapping (jsobj-assoc result "@set")))
@@ -1804,8 +1785,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                                        c-i)))
                                 ;; 7.6.4.3
                                 ((not (hash-has-key? result item-active-property))
-                                 (error 'json-ld-error
-                                        "compaction to lists of lists"))
+                                 (json-ld-error "compaction to lists of lists"))
                                 ;; the default, though unsaid
                                 (else compacted-item)))
                              compacted-item)])
@@ -2347,8 +2327,8 @@ Does a multi-value-return of (expanded-iri active-context defined)"
                          (hash-keys compact-flat))])
            (when (not (= 0 non-id-graph-members))
              ;; This is a determinism issue
-             (error 'json-ld-error
-                    "Compacted flattened document has more keys than @context and @graph"))
+             (json-ld-error
+              "Compacted flattened document has more keys than @context and @graph"))
            compact-flat)))))
 
 (provide flatten-jsonld)
@@ -2477,8 +2457,7 @@ Does a multi-value-return of (expanded-iri active-context defined)"
        ;; 6.8
        (when (hash-has-key? element "@index")
          (when (hash-has-key? node "@index")
-           (error 'json-ld-error
-                  "conflicting indexes"))
+           (json-ld-error "conflicting indexes"))
          (hash-set! node "@index" (hash-ref element "@index"))
          (hash-remove! element "@index"))
        ;; 6.9
