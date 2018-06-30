@@ -70,7 +70,7 @@
 (define (simple-signature-object-maker type)
   (lambda (signature-value sig-options)
     (let* ([result (hash-set sig-options sec:signatureValue-sym signature-value)]
-           [result (hash-set result '@type type)]
+           [result (hash-set result '@type type)])
       result)))
 
 (define rsa-signature-2018-suite
