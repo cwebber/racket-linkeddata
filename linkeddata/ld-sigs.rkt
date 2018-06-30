@@ -9,15 +9,38 @@
          json
          net/base64)
 
+(define (term-maker vocab-url)
+  (lambda (term)
+    (define str-val
+      (string-append sec-vocab-url term))
+    (define sym-val
+      (string->symbol str-val))
+    (values str-val sym-val)))
+
 (define security-context-url "https://w3id.org/security/v1")
 (define sec-vocab-url "https://w3id.org/security#")
-(define (sec-term term)
-  (string-append sec-vocab-url term))
+(define sec-term (term-maker sec-vocab-url))
 
-(define sec:proof
+(define-values (sec:proof sec:proof-sym)
   (sec-term "proof"))
-(define sec:signature
+(define-values (sec:signature sec:signature-sym)
   (sec-term "signature"))
+(define-values (sec:owner sec:owner-sym)
+  (sec-term "owner"))
+(define-values (sec:publicKey sec:publicKey-sym)
+  (sec-term "publicKey"))
+(define-values (sec:signatureValue sec:signatureValue-sym)
+  (sec-term "signatureValue"))
+(define-values (sec:proofValue sec:proofValue-sym)
+  (sec-term "proofValue"))
+(define-values (sec:LinkedDataSignature2018 sec:LinkedDataSignature2018-sym)
+  (sec-term "LinkedDataSignature2018"))
+
+(define dc-vocab-url "http://purl.org/dc/terms/")
+(define dc-term (term-maker dc-vocab-url))
+
+(define-values (dc:creator dc:creator-sym)
+  (dc-term "creator"))
 
 (define security-context
   (call-with-input-file (build-path "contexts" "security.jsonld")
@@ -44,11 +67,10 @@
 (define (suite-make-signature-object suite sig-value sig-options)
   ((suite-make-signature-object-proc suite) sig-value sig-options))
 
-(define (simple-signature-object-maker context type)
+(define (simple-signature-object-maker type)
   (lambda (signature-value sig-options)
-    (let* ([result (hash-set sig-options 'signatureValue signature-value)]
+    (let* ([result (hash-set sig-options sec:signatureValue-sym signature-value)]
            [result (hash-set result '@type type)]
-           [result (hash-set result '@context context)])
       result)))
 
 (define rsa-signature-2018-suite
@@ -63,10 +85,12 @@
    (lambda (obj privkey)
      (digest/sign privkey 'sha256 obj))
    ;; make-signature-object-proc
-   (simple-signature-object-maker "https://w3id.org/security/v1"
-                                  "LinkedDataSignature2018")
+   (simple-signature-object-maker sec:LinkedDataSignature2018)
    ;; verify-proc
-   'TODO))
+   (lambda (obj proof)
+     (define pubkey
+       'TODO)
+     (digest/verify pubkey 'sha256 obj))))
 
 ;; The whole mechanism of signature options both being a dictionary of
 ;; options that are passed in and also something attached *to the
@@ -115,8 +139,8 @@
 
   (define pre-compacted-output
     (hash-set expanded-document (if legacy-signature-field?
-                                    (string->symbol sec:signature)
-                                    (string->symbol sec:proof))
+                                    sec:signature-sym
+                                    sec:proof-sym)
               (suite-make-signature-object suite signature-value sig-options)))
 
   ;; TODO: Compact it again with its original context... and the context of
@@ -187,4 +211,120 @@
     ;; ^--- response to that spectext: Yeah, we use digest/sign
     output))
 
+(define (lds-verify-jsonld signed-document suite sig-options
+                           #:fetch-jsonld [fetch-jsonld http-get-jsonld])
+  "Returns a boolean identifying whether the signature succeeded or failed.
+If any object, such as the key or etc is unable to be retrieved, this will
+raise an exception instead."
+  (define expanded
+    (expand-jsonld signed-document))
+  (define proof-field
+    (cond [(hash-has-key? expanded sec:proof-sym)
+           sec:proof-sym]
+          [(hash-has-key? expanded sec:signature-sym)
+           sec:signature-sym]
+          [else (error "Missing proof/signature field")]))
+  (define proof-node
+    (hash-ref expanded proof-field))
+  ;; 1. Get the public key by dereferencing its URL identifier in the
+  ;; signature node of the default graph of signed document. Confirm
+  ;; that the linked data document that describes the public key
+  ;; specifies its owner and that its owner's URL identifier can be
+  ;; dereferenced to reveal a bi-directional link back to the
+  ;; key. Ensure that the key's owner is a trusted entity before
+  ;; proceeding to the next step.
+  ;;
+  ;; FIXME: I really think owner is broken, though Manu and Dave
+  ;; aren't convinced:
+  ;;   https://github.com/w3c-dvcg/ld-signatures/issues/20
+  (define public-key
+    (match (hash-ref expanded dc:creator-sym 'nothing)
+      [(list (? hash? key))
+       key]
+      [(list (? string? key-uri))
+       (match (expand-jsonld (fetch-jsonld key-uri))
+         [(list (? hash? key))
+          key])]
+      [_ (error "Missing or invalid creator field")]))
+  ;; Throw an exception if the owner doesn't match
+  (verify-owner public-key)
+  ;; 2. Let document be a copy of signed document.
+  (define document (hash-remove signed-document proof-field))
+  ;; 3. Remove any signature nodes from the default graph in document and
+  ;; save it as signature.
+  (define signature proof-node)
+  ;; 4. Generate a canonicalized document by canonicalizing document
+  ;; according to the canonicalization algorithm (e.g. the GCA2015
+  ;; [RDF-DATASET-NORMALIZATION] algorithm).
+  (define canonicalized-document
+   (suite-canonize-jsonld suite document))
 
+  ;; 5. Create a value tbv that represents the data to be verified, and set
+  ;; it to the result of running the Create Verify Hash Algorithm, passing
+  ;; the information in signature.
+  (define tbv
+    (create-verify-hash canonicalized-document suite signature))
+
+  ;; 6. Pass the signatureValue, tbv, and the public key to the signature
+  ;; algorithm (e.g. JSON Web Signature using RSASSA-PKCS1-v1_5
+  ;; algorithm). Return the resulting boolean value.
+  (suite-verify suite tbv signature))
+
+(define (verify-owner key)
+  ;; Now let's make sure that the link is bidirectional.
+  ;; Hm... It seems like there are two paths here:
+  ;;  - The key is "embedded".
+  ;;    In this case I think we want to assume that the key really is
+  ;;    that key unless proven otherwise.  So the next steps are:
+  ;;    - fetched-key? stays #f
+  ;;    - Dereference the owner.  In fact we have to do this regardless
+  ;;      of whether the owner is embedded.
+  ;;    - Now we look for the key.  There are two valid cases:
+  ;;      - The key is embedded.  Make sure the embedded key matches
+  ;;        the key we have.  We don't need to fetch the key.
+  ;;      - The key is linked to.  Okay great.  If we haven't fetched
+  ;;        the key yet, then fetch it and make sure it matches this one.
+  ;;        Mark fetched-key? #t
+  ;;  - The key is included as an id that should be dereferenced.
+  ;;    - Dereference the key.  mark fetched-key? as #t
+  ;;    - I think the rest of the steps are the same...
+  (define embedded-key #f)   ; should be expanded
+  (define fetched-key #f)
+  'TODO
+  #;(match creator
+    ;; It's embedded
+    [(? hash?)
+     (set! embedded-key creator)
+     ;; Next, we need to fetch the owner and expand it.
+     ;; In either case, we have to actually retrieve the owner
+     ;; this time.
+     (define owner-id
+       (match (hash-ref key sec:owner-sym 'nothing)
+         [(list (? string? owner))
+          owner]
+         [(list (? hash? owner))
+          ;; FIXME: What do we do if the owner doesn't have an id?
+          ;;   currently we error out.  It doesn't seem like any sensible
+          ;;   behavior is possible under current lds rules
+          (hash-ref owner '@id)]
+         [_ (error "Missing or invalid creator field")]))
+     (define expanded-owner
+       (expand-jsonld (fetch-jsonld owner-id)))
+     ;; Now we need to fetch the keys... there are two
+     ;; ways to find a key.  One is that it's a uri reference
+     ;; and the other is that we match the exact object.
+     (match (hash-ref expanded-owner sec:publicKey)
+       [(? string?)
+        
+        'TODO]
+       [(? hash?)
+        'TODO]
+       
+       )
+
+     ]
+    ;; It's a uri that we must dereference
+    [(? string?)
+
+     ]
+    ))
