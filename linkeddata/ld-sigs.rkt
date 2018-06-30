@@ -67,11 +67,13 @@
 (define (suite-make-signature-object suite sig-value sig-options)
   ((suite-make-signature-object-proc suite) sig-value sig-options))
 
-(define (simple-signature-object-maker type)
+(define (simple-signature-object-maker type
+                                       #:expand-context
+                                       [expand-context security-context-url])
   (lambda (signature-value sig-options)
     (let* ([result (hash-set sig-options sec:signatureValue-sym signature-value)]
            [result (hash-set result '@type type)])
-      (expand-jsonld result #:expand-context security-context-url))))
+      (expand-jsonld result #:expand-context expand-context))))
 
 (define rsa-signature-2018-suite
   (suite
