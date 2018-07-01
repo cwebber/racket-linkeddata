@@ -219,15 +219,16 @@
 If any object, such as the key or etc is unable to be retrieved, this will
 raise an exception instead."
   (define expanded
-    (expand-jsonld signed-document))
+    (car (expand-jsonld signed-document)))
   (define proof-field
     (cond [(hash-has-key? expanded sec:proof-sym)
            sec:proof-sym]
           [(hash-has-key? expanded sec:signature-sym)
            sec:signature-sym]
           [else (error "Missing proof/signature field")]))
+  ;; FIXME: Handle multiple proofs
   (define proof-node
-    (hash-ref expanded proof-field))
+    (car (hash-ref expanded proof-field)))
   ;; 1. Get the public key by dereferencing its URL identifier in the
   ;; signature node of the default graph of signed document. Confirm
   ;; that the linked data document that describes the public key
@@ -240,8 +241,9 @@ raise an exception instead."
   ;; aren't convinced:
   ;;   https://github.com/w3c-dvcg/ld-signatures/issues/20
   (define public-key
-    (match (hash-ref expanded dc:creator-sym 'nothing)
+    (match (hash-ref proof-node dc:creator-sym 'nothing)
       [(list (? hash? key))
+       ;; TODO: we should add an always-fetch-key option
        key]
       [(list (? string? key-uri))
        (match (expand-jsonld (fetch-jsonld key-uri))
