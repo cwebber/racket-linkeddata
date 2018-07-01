@@ -12,7 +12,7 @@
 (define (term-maker vocab-url)
   (lambda (term)
     (define str-val
-      (string-append sec-vocab-url term))
+      (string-append vocab-url term))
     (define sym-val
       (string->symbol str-val))
     (values str-val sym-val)))
