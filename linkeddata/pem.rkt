@@ -25,6 +25,8 @@ Will use only the public key portion if PK-KEY contains both."
   (base64-encode-with-header (pk-key->datum pk-key 'SubjectPublicKeyInfo)
                              "PUBLIC KEY"))
 
+(provide private-key->pem public-key->pem)
+
 (define pem-rx
   #px"^-----BEGIN ([[:alnum:] ]+)-----([[:alnum:][:space:]+/=]+)-----END [[:alnum:] ]+-----")
 
@@ -50,6 +52,8 @@ Will use only the public key portion if PK-KEY contains both."
   (let-values ([(_ pubkey-b64)
                 (decode-delimited-base64 pem-key)])
     (datum->pk-key pubkey-b64 'SubjectPublicKeyInfo)))
+
+(provide pem->private-key pem->public-key)
 
 (module+ test
   (define privkey (generate-private-key rsa-impl '((nbits 512))))
