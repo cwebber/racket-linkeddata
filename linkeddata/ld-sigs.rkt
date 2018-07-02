@@ -7,7 +7,8 @@
          linkeddata/date-utils
          crypto
          json
-         net/base64)
+         net/base64
+         linkeddata/pem)
 
 (define (term-maker vocab-url)
   (lambda (term)
@@ -29,6 +30,8 @@
   (sec-term "owner"))
 (define-values (sec:publicKey sec:publicKey-sym)
   (sec-term "publicKey"))
+(define-values (sec:publicKeyPem sec:publicKeyPem-sym)
+  (sec-term "publicKeyPem"))
 (define-values (sec:signatureValue sec:signatureValue-sym)
   (sec-term "signatureValue"))
 (define-values (sec:proofValue sec:proofValue-sym)
@@ -62,8 +65,8 @@
   ((suite-hash-proc suite) obj))
 (define (suite-sign suite obj private-key)
   ((suite-sign-proc suite) obj private-key))
-(define (suite-verify suite obj)
-  ((suite-verify-proc suite) obj))
+(define (suite-verify suite obj creator signature)
+  ((suite-verify-proc suite) obj creator signature))
 (define (suite-make-signature-object suite sig-value sig-options)
   ((suite-make-signature-object-proc suite) sig-value sig-options))
 
@@ -89,10 +92,19 @@
    ;; make-signature-object-proc
    (simple-signature-object-maker sec:LinkedDataSignature2018)
    ;; verify-proc
-   (lambda (obj proof)
+   (lambda (obj creator signature)
+     ;; TODO: Iterate through all keys until we find the right one?
+     ;; (define pubkey-field
+     ;;   (car (hash-ref creator sec:publicKey-sym)))
+     (define pubkey-pem
+       (hash-ref (car (hash-ref creator sec:publicKeyPem-sym)) '@value))
      (define pubkey
-       'TODO)
-     (digest/verify pubkey 'sha256 obj))))
+       (pem->public-key pubkey-pem))
+     (define sig-value
+       (match (hash-ref signature sec:signatureValue-sym)
+         [(list (? hash? sv))
+          (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
+     (digest/verify pubkey 'sha256 obj sig-value))))
 
 ;; The whole mechanism of signature options both being a dictionary of
 ;; options that are passed in and also something attached *to the
@@ -240,7 +252,7 @@ raise an exception instead."
   ;; FIXME: I really think owner is broken, though Manu and Dave
   ;; aren't convinced:
   ;;   https://github.com/w3c-dvcg/ld-signatures/issues/20
-  (define public-key
+  (define creator
     (match (hash-ref proof-node dc:creator-sym 'nothing)
       [(list (? hash? key))
        ;; TODO: we should add an always-fetch-key option
@@ -251,7 +263,7 @@ raise an exception instead."
           key])]
       [_ (error "Missing or invalid creator field")]))
   ;; Throw an exception if the owner doesn't match
-  (verify-owner public-key)
+  (verify-owner creator)
   ;; 2. Let document be a copy of signed document.
   (define document (hash-remove signed-document proof-field))
   ;; 3. Remove any signature nodes from the default graph in document and
@@ -272,7 +284,7 @@ raise an exception instead."
   ;; 6. Pass the signatureValue, tbv, and the public key to the signature
   ;; algorithm (e.g. JSON Web Signature using RSASSA-PKCS1-v1_5
   ;; algorithm). Return the resulting boolean value.
-  (suite-verify suite tbv signature))
+  (suite-verify suite tbv creator signature))
 
 (define (verify-owner key)
   ;; Now let's make sure that the link is bidirectional.
