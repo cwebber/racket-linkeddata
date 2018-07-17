@@ -36,6 +36,8 @@
   (sec-term "signatureValue"))
 (define-values (sec:proofValue sec:proofValue-sym)
   (sec-term "proofValue"))
+(define-values (sec:nonce sec:nonce-sym)
+  (sec-term "nonce"))
 (define-values (sec:LinkedDataSignature2018 sec:LinkedDataSignature2018-sym)
   (sec-term "LinkedDataSignature2018"))
 
@@ -44,39 +46,99 @@
 
 (define-values (dc:creator dc:creator-sym)
   (dc-term "creator"))
+(define-values (dc:created dc:created-sym)
+  (dc-term "created"))
 
 (define security-context
   (call-with-input-file (build-path "contexts" "security.jsonld")
     read-json))
 
-(struct suite
-  (sig-uri
-   canonize-jsonld-proc
-   #;canonize-quads-proc
-   hash-proc sign-proc
-   make-signature-object-proc
-   verify-proc))
+(define (not-implemented)
+  (error "Not implemented"))
 
-(define (suite-canonize-jsonld suite json-ld)
-  ((suite-canonize-jsonld-proc suite) json-ld))
-#;(define (suite-canonize-quads suite quads)
-  ((suite-canonize-quads-proc suite) quads))
-(define (suite-hash suite obj)
-  ((suite-hash-proc suite) obj))
-(define (suite-sign suite obj private-key)
-  ((suite-sign-proc suite) obj private-key))
-(define (suite-verify suite obj creator signature)
-  ((suite-verify-proc suite) obj creator signature))
-(define (suite-make-signature-object suite sig-value sig-options)
-  ((suite-make-signature-object-proc suite) sig-value sig-options))
+(define proof-purpose%
+  (class object%))
 
-(define (simple-signature-object-maker type
-                                       #:expand-context
-                                       [expand-context security-context-url])
-  (lambda (signature-value sig-options)
-    (let* ([result (hash-set sig-options sec:signatureValue-sym signature-value)]
-           [result (hash-set result '@type type)])
-      (expand-jsonld result #:expand-context expand-context))))
+(define suite%
+  (class object%
+    (super-new)
+    (define/public (suite-uri)
+      (not-implemented))
+    ;; This one might not even be required, might be handled by the specific suite...
+    (define/public (normalize doc)
+      (not-implemented))
+    ;; SO.  Here's the thing.  I'm not sure we can escape sig-options as much
+    ;; as I'd like to.  Reason being: we have to compose with proofPurpose options too?
+    ;; OH WAIT, there's an answer to that, and it's that the signature
+    ;; suites that support proofPurpose should just have a proofPurpose keyword...???
+    ;; though I guess *those* arguments will have to be a hashmap, at which point maybe
+    ;; we might as well use hashmaps here
+    (define/public (make-proof-object doc private-key sig-options #;proofPurpose)
+      (not-implemented))
+    (define/public (verify-proofs doc #;expectedProofPurpose)
+      (not-implemented))))
+
+(define linked-data-signature-2015-suite
+  (new
+   (class signature-suite%
+     (super-new)
+     (define/override (suite-uri)
+       "https://w3id.org/security#GraphSignature2012")
+
+     (define/override (normalize doc)
+       (json-ld->urdna2015-nquads-string doc))
+
+     ;; you know... we *have to* attach the proof object anyway, because we
+     ;; have to do so to do the signature with the proof partly attached anyway
+     ;; (before the proof's signature is added)
+     ;; FIXME: We have to add proofPurpose specific behavior here
+     ;; FIXME: We need to support multiple proofs
+     (define/override (make-proof-object doc private-key sig-options
+                                         #;proofPurpose)
+       (define proof-obj
+         `#hasheq((@type . ,(suite-uri))))
+       ;; Add created field, defaulting to today
+       (set! proof-obj
+             (hash-set proof-obj dc:created
+                       (or (hash-ref sig-options created)
+                           (http-date-str (seconds->date (current-seconds) #f)))))
+       (define (maybe-add-to-proof! options-key set-key)
+         (when (hash-has-key? sig-options key)
+           (set! proof-obj (hash-set proof-obj set-key
+                                     (hash-ref sig-options key)))))
+       ;; Add creator/nonce/domain fields, if appropriate
+       (maybe-add-to-proof! 'creator dc:creator-sym)
+       (maybe-add-to-proof! 'nonce sec:nonce-sym)
+       (maybe-add-to-proof! 'domain sec:domain-sym)
+
+       ;; Prepare to get signature value.  We need to simulate adding the proof
+       ;; to the document without the signature field
+       (define tbs
+         (create-verify-hash (hash-set doc sec:proof-sym proof-obj)
+                             suite sig-options))
+       (define signature-value
+         (bytes->string/utf-8 (base64-encode (digest/sign privkey 'sha256 tbs))))
+
+       ;; Attach the signature to the proof
+       (hash-set! proof-obj sec:signatureValue-sym
+                  signature-value)
+
+       ;; Return proof
+       proof-obj)
+
+     (define/override (verify-proofs doc #;expectedProofPurpose)
+       ;; TODO: Iterate through all keys until we find the right one?
+       ;; (define pubkey-field
+       ;;   (car (hash-ref creator sec:publicKey-sym)))
+       (define pubkey-pem
+         (hash-ref (car (hash-ref creator sec:publicKeyPem-sym)) '@value))
+       (define pubkey
+         (pem->public-key pubkey-pem))
+       (define sig-value
+         (match (hash-ref signature sec:signatureValue-sym)
+           [(list (? hash? sv))
+            (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
+       (digest/verify pubkey 'sha256 obj sig-value)))))
 
 (define rsa-signature-2018-suite
   (suite
@@ -111,10 +173,10 @@
 ;; signature json* seems just very... weird to me.
 
 (define (lds-sign-jsonld document sig-options private-key
-                         #:suite [suite rsa-signature-2018-suite]
+                         #:suite [suite linked-data-signature-2015-suite]
                          #:legacy-signature-field? [legacy-signature-field? #f])
   "Sign a json-ld document."
-  (lds-sign-main document (suite-canonize-jsonld suite document)
+  (lds-sign-main document (send suite jsonld-normalize document)
                  sig-options private-key suite
                  #:legacy-signature-field? legacy-signature-field?))
 
@@ -133,12 +195,12 @@
   ;; 3: Create a value tbs that represents the data to be signed, and set it to
   ;; the result of running the Create Verify Hash Algorithm, passing the
   ;; information in options.
-  (define tbs
+  #;(define tbs
     (create-verify-hash canonicalized-document suite sig-options))
   ;; 4: Digitally sign tbs using the privateKey and the the digital signature
   ;; algorithm (e.g. JSON Web Signature using RSASSA-PKCS1-v1_5 algorithm). The
   ;; resulting string is the signatureValue.
-  (define signature-value
+  #;(define signature-value
     (bytes->string/utf-8 (base64-encode (suite-sign suite tbs private-key))))
 
   ;; 5: Add a signature node to output containing a linked data signature using
@@ -148,8 +210,14 @@
   ;; TODO: Note, I have no idea how to do this if it's not json right now.
   ;;   It seems we need to know the root of the graph.
   ;;   See https://github.com/w3c-dvcg/ld-signatures/issues/19
+  (define proof-object
+    (send suite
+          jsonld-make-proof-object canonicalized-document
+          private-key sig-options))
+
   (define expanded-document
-    (car (expand-jsonld document)))
+    (match (expand-jsonld document)
+      [(list expanded) expanded]))
 
   (define pre-compacted-output
     (hash-set expanded-document (if legacy-signature-field?
