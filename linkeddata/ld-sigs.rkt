@@ -67,7 +67,7 @@
     suite-uri
     ;; args: doc
     ;;       hasheq? -> string?
-    normalize
+    canonicalize
     ;; args: expanded-doc private-key  sig-options
     ;;       jsobj?           private-key? hasheq? -> jsobj?
     make-proof-object
@@ -82,7 +82,7 @@
      (define/public (suite-uri)
        "https://dustycloud.org/#CwebberSignature2018")
 
-     (define/public (normalize doc)
+     (define/public (canonicalize doc)
        (json-ld->urdna2015-nquads-string doc))
 
      ;; you know... we *have to* attach the proof object anyway, because we
@@ -91,13 +91,13 @@
      ;; FIXME: We have to add proofPurpose specific behavior here
      ;; FIXME: We need to support multiple proofs
      (define/public (make-proof-object expanded-doc private-key sig-options
-                                         #;proofPurpose)
+                                       #;proofPurpose)
        (define proof-obj
          `#hasheq((@type . ,(suite-uri))))
        ;; Add created field, defaulting to today
        (set! proof-obj
-             (hash-set proof-obj dc:created
-                       (or (hash-ref sig-options dc:created)
+             (hash-set proof-obj dc:created-sym
+                       (or (hash-ref sig-options dc:created-sym #f)
                            (http-date-str (seconds->date (current-seconds) #f)))))
        (define (maybe-add-to-proof! options-key set-key)
          (when (hash-has-key? sig-options set-key)
@@ -113,13 +113,14 @@
        ;; NOTE: This is the place where we differ from the rsa 2015 algorithm
        ;;   in that we dont' use create-verify-hash
        (define tbs
-         (normalize (hash-set expanded-doc sec:proof-sym proof-obj)))
+         (canonicalize (hash-set expanded-doc sec:proof-sym proof-obj)))
        (define signature-value
          (bytes->string/utf-8 (base64-encode (digest/sign private-key 'sha256 tbs))))
 
        ;; Attach the signature to the proof
-       (hash-set! proof-obj sec:signatureValue-sym
-                  signature-value)
+       (set! proof-obj
+             (hash-set proof-obj sec:signatureValue-sym
+                       signature-value))
 
        ;; Return proof
        proof-obj)
@@ -127,7 +128,7 @@
      ;; Should this be verify proofs, or verify proof?
      ;; We need to verify each proof individually against a suite that's
      ;; available, right?
-     ;; Note that we need to normalize the doc *as this proof is expected to check it*
+     ;; Note that we need to canonicalize the doc *as this proof is expected to check it*
      ;; at this stage.  That means modifying the proof section before normalization
      ;; appropriately.
      (define/public (verify-proof canonicalized-doc creator proof #;expectedProofPurpose)
@@ -155,19 +156,16 @@
 (define (lds-sign-jsonld document sig-options private-key
                          #:suite [suite cwebber-signature-2018-suite]
                          #:legacy-signature-field? [legacy-signature-field? #f])
-  (define canonicalized-document
-    (send suite jsonld-normalize document))
-
-  ;; Generate the proof document off the canonicalized document
-  (define proof-object
-    (send suite
-          jsonld-make-proof-object canonicalized-document
-          private-key sig-options))
-
   ;; Expand the document and attach the proof
   (define expanded-document
     (match (expand-jsonld document)
       [(list expanded) expanded]))
+
+  ;; Generate the proof document off the canonicalized document
+  (define proof-object
+    (send suite make-proof-object
+          expanded-document private-key sig-options))
+
   (define pre-compacted-output
     (hash-set expanded-document sec:proof-sym proof-object))
 
@@ -284,7 +282,7 @@ raise an exception instead."
            (hash-set expanded proof-key
                      proof-node-without-sig)))
        (define canonicalized-document
-         (send suite canonicalize-jsonld document-to-canonicalize))
+         (send suite canonicalize document-to-canonicalize))
 
        ;; 5. Create a value tbv that represents the data to be verified, and set
        ;; it to the result of running the Create Verify Hash Algorithm, passing
