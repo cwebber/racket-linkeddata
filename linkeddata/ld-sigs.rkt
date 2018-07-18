@@ -59,24 +59,19 @@
 (define proof-purpose%
   (class object%))
 
-(define suite%
-  (class object%
-    (super-new)
-    (define/public (suite-uri)
-      (not-implemented))
-    ;; This one might not even be required, might be handled by the specific suite...
-    (define/public (normalize doc)
-      (not-implemented))
-    ;; SO.  Here's the thing.  I'm not sure we can escape sig-options as much
-    ;; as I'd like to.  Reason being: we have to compose with proofPurpose options too?
-    ;; OH WAIT, there's an answer to that, and it's that the signature
-    ;; suites that support proofPurpose should just have a proofPurpose keyword...???
-    ;; though I guess *those* arguments will have to be a hashmap, at which point maybe
-    ;; we might as well use hashmaps here
-    (define/public (make-proof-object doc private-key sig-options #;proofPurpose)
-      (not-implemented))
-    (define/public (verify-proofs doc #;expectedProofPurpose)
-      (not-implemented))))
+(define suite-interface
+  (interface ()
+    ;; -> string?
+    suite-uri
+    ;; args: doc
+    ;;       hasheq? -> string?
+    normalize
+    ;; args: canonicalied-doc private-key  sig-options
+    ;;       jsobj?           private-key? hasheq? -> jsobj?
+    make-proof-object
+    ;; args: canonicalized-doc creator proof
+    ;;       jsobj?            jsobj?  jsobj? -> boolean?
+    verify-proof))
 
 (define cwebber-signature-2018-suite
   (new
@@ -100,7 +95,7 @@
        ;; Add created field, defaulting to today
        (set! proof-obj
              (hash-set proof-obj dc:created
-                       (or (hash-ref sig-options created)
+                       (or (hash-ref sig-options dc:created)
                            (http-date-str (seconds->date (current-seconds) #f)))))
        (define (maybe-add-to-proof! options-key set-key)
          (when (hash-has-key? sig-options key)
@@ -117,7 +112,7 @@
          (create-verify-hash (hash-set doc sec:proof-sym proof-obj)
                              suite sig-options))
        (define signature-value
-         (bytes->string/utf-8 (base64-encode (digest/sign privkey 'sha256 tbs))))
+         (bytes->string/utf-8 (base64-encode (digest/sign private-key 'sha256 tbs))))
 
        ;; Attach the signature to the proof
        (hash-set! proof-obj sec:signatureValue-sym
@@ -146,20 +141,6 @@
             (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
        (digest/verify pubkey 'sha256 canonicalized-doc sig-value)))))
 
-;; The whole mechanism of signature options both being a dictionary of
-;; options that are passed in and also something attached *to the
-;; signature json* seems just very... weird to me.
-
-(define (lds-sign-jsonld document sig-options private-key
-                         #:suite [suite cwebber-signature-2018-suite]
-                         #:legacy-signature-field? [legacy-signature-field? #f])
-  "Sign a json-ld document."
-  (lds-sign-main document (send suite jsonld-normalize document)
-                 sig-options private-key suite
-                 #:legacy-signature-field? legacy-signature-field?))
-
-(provide lds-sign-jsonld)
-
 ;; See https://github.com/w3c-dvcg/ld-signatures/issues/19
 #;(define (lds-sign-quads document sig-options private-key
                         [suite rsa-signature-2018-suite])
@@ -168,45 +149,29 @@
                  (suite-canonicalize-quads suite document)
                  sig-options private-key))
 
-(define (lds-sign-main document canonicalized-document sig-options private-key suite
-                       #:legacy-signature-field? [legacy-signature-field? #f])
-  ;; 3: Create a value tbs that represents the data to be signed, and set it to
-  ;; the result of running the Create Verify Hash Algorithm, passing the
-  ;; information in options.
-  #;(define tbs
-    (create-verify-hash canonicalized-document suite sig-options))
-  ;; 4: Digitally sign tbs using the privateKey and the the digital signature
-  ;; algorithm (e.g. JSON Web Signature using RSASSA-PKCS1-v1_5 algorithm). The
-  ;; resulting string is the signatureValue.
-  #;(define signature-value
-    (bytes->string/utf-8 (base64-encode (suite-sign suite tbs private-key))))
+(define (lds-sign-jsonld document sig-options private-key
+                         #:suite [suite cwebber-signature-2018-suite]
+                         #:legacy-signature-field? [legacy-signature-field? #f])
+  (define canonicalized-document
+    (send suite jsonld-normalize document))
 
-  ;; 5: Add a signature node to output containing a linked data signature using
-  ;; the appropriate type and signatureValue values as well as all of the data
-  ;; in the signature options (e.g. creator, created, and if given, any
-  ;; additional signature options such as nonce and domain).
-  ;; TODO: Note, I have no idea how to do this if it's not json right now.
-  ;;   It seems we need to know the root of the graph.
-  ;;   See https://github.com/w3c-dvcg/ld-signatures/issues/19
+  ;; Generate the proof document off the canonicalized document
   (define proof-object
     (send suite
           jsonld-make-proof-object canonicalized-document
           private-key sig-options))
 
+  ;; Expand the document and attach the proof
   (define expanded-document
     (match (expand-jsonld document)
       [(list expanded) expanded]))
-
   (define pre-compacted-output
     (hash-set expanded-document sec:proof-sym proof-object))
 
-  ;; TODO: Compact it again with its original context... and the context of
-  ;; the proof?  Or, look again at what pyld_sig is doing here
-  ;; IMO if the toplevel context doesn't support the security vocabulary
-  ;; that's its problem.
-
-  ;; 6: Return output as the signed linked data document.
+  ;; Compact the signed document using the context from the original document
   (compact-jsonld pre-compacted-output (hash-ref document '@context #hasheq())))
+
+(provide lds-sign-jsonld)
 
 ;; TODO: This is very 2015, and isn't as general as it may appear
 #;(define (create-verify-hash canonicalized-document suite sig-options)
@@ -270,6 +235,8 @@
     ;; ^--- response to that spectext: Yeah, we use digest/sign
     output))
 
+;; FIXME: We shouldn't select the suite ourselves... we should be
+;;   querying a registry of suites depending on the proof type
 (define (lds-verify-jsonld signed-document suite sig-options
                            #:fetch-jsonld [fetch-jsonld http-get-jsonld])
   "Returns a boolean identifying whether the signature succeeded or failed.
@@ -286,15 +253,7 @@ raise an exception instead."
               sec:signature-sym]
              [else (error "Missing proof/signature field")]))
      (for ([proof-node (hash-ref expanded proof-key)])
-       ;; FIXME: Handle @list objects here
-       ;; 1. Get the public key by dereferencing its URL identifier in the
-       ;; signature node of the default graph of signed document. Confirm
-       ;; that the linked data document that describes the public key
-       ;; specifies its owner and that its owner's URL identifier can be
-       ;; dereferenced to reveal a bi-directional link back to the
-       ;; key. Ensure that the key's owner is a trusted entity before
-       ;; proceeding to the next step.
-       ;;
+       ;; Fetch "creator" field, which is really the public key that signed this
        (define creator
          (match (hash-ref proof-node dc:creator-sym 'nothing)
            [(list (? hash? key))
@@ -310,23 +269,17 @@ raise an exception instead."
        ;; aren't convinced:
        ;;   https://github.com/w3c-dvcg/ld-signatures/issues/20
        #;(verify-owner creator)
-       ;; 2. Let document be a copy of signed document.
-       ;;
-       ;; The spec text isn't quite right ISTM.  What we need to do is
-       ;; remove the signature field from the proof node and re-attach
-       ;; it to the document.
+
+       ;; The spec text doesn't say this.  What we're doing here is
+       ;; removing the signature field from the proof node and re-attaching it
+       ;; to the document.
+       ;; FIXME: However, that may not be totally right.  The 2012/2015 algorithms
+       ;; hashed the documents separately IIRC.
        (define document-to-canonicalize
          (let ([proof-node-without-sig
                 (hash-remove proof-node sec:signatureValue-sym)])
            (hash-set expanded proof-key
                      proof-node-without-sig)))
-
-       ;; 3. Remove any signature nodes from the default graph in document and
-       ;; save it as signature.
-       #;(define signature proof-node) ; we already have proof-node
-       ;; 4. Generate a canonicalized document by canonicalizing document
-       ;; according to the canonicalization algorithm (e.g. the GCA2015
-       ;; [RDF-DATASET-NORMALIZATION] algorithm).
        (define canonicalized-document
          (send suite canonicalize-jsonld document-to-canonicalize))
 
@@ -336,9 +289,7 @@ raise an exception instead."
        #;(define tbv
        (create-verify-hash canonicalized-document suite proof-node))
 
-       ;; 6. Pass the signatureValue, tbv, and the public key to the signature
-       ;; algorithm (e.g. JSON Web Signature using RSASSA-PKCS1-v1_5
-       ;; algorithm). Return the resulting boolean value.
+       ;; If this node isn't valid, then we return #f.
        (when (not (send suite verify-proof canonicalized-document creator proof-node))
          (return #f)))
      #t)))
