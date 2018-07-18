@@ -38,6 +38,8 @@
   (sec-term "proofValue"))
 (define-values (sec:nonce sec:nonce-sym)
   (sec-term "nonce"))
+(define-values (sec:domain sec:domain-sym)
+  (sec-term "domain"))
 (define-values (sec:LinkedDataSignature2018 sec:LinkedDataSignature2018-sym)
   (sec-term "LinkedDataSignature2018"))
 
@@ -66,7 +68,7 @@
     ;; args: doc
     ;;       hasheq? -> string?
     normalize
-    ;; args: canonicalied-doc private-key  sig-options
+    ;; args: expanded-doc private-key  sig-options
     ;;       jsobj?           private-key? hasheq? -> jsobj?
     make-proof-object
     ;; args: canonicalized-doc creator proof
@@ -75,12 +77,12 @@
 
 (define cwebber-signature-2018-suite
   (new
-   (class signature-suite%
+   (class object%
      (super-new)
-     (define/override (suite-uri)
+     (define/public (suite-uri)
        "https://dustycloud.org/#CwebberSignature2018")
 
-     (define/override (normalize doc)
+     (define/public (normalize doc)
        (json-ld->urdna2015-nquads-string doc))
 
      ;; you know... we *have to* attach the proof object anyway, because we
@@ -88,7 +90,7 @@
      ;; (before the proof's signature is added)
      ;; FIXME: We have to add proofPurpose specific behavior here
      ;; FIXME: We need to support multiple proofs
-     (define/override (make-proof-object canonicalized-doc private-key sig-options
+     (define/public (make-proof-object expanded-doc private-key sig-options
                                          #;proofPurpose)
        (define proof-obj
          `#hasheq((@type . ,(suite-uri))))
@@ -98,9 +100,9 @@
                        (or (hash-ref sig-options dc:created)
                            (http-date-str (seconds->date (current-seconds) #f)))))
        (define (maybe-add-to-proof! options-key set-key)
-         (when (hash-has-key? sig-options key)
+         (when (hash-has-key? sig-options set-key)
            (set! proof-obj (hash-set proof-obj set-key
-                                     (hash-ref sig-options key)))))
+                                     (hash-ref sig-options set-key)))))
        ;; Add creator/nonce/domain fields, if appropriate
        (maybe-add-to-proof! 'creator dc:creator-sym)
        (maybe-add-to-proof! 'nonce sec:nonce-sym)
@@ -108,9 +110,10 @@
 
        ;; Prepare to get signature value.  We need to simulate adding the proof
        ;; to the document without the signature field
+       ;; NOTE: This is the place where we differ from the rsa 2015 algorithm
+       ;;   in that we dont' use create-verify-hash
        (define tbs
-         (create-verify-hash (hash-set doc sec:proof-sym proof-obj)
-                             suite sig-options))
+         (normalize (hash-set expanded-doc sec:proof-sym proof-obj)))
        (define signature-value
          (bytes->string/utf-8 (base64-encode (digest/sign private-key 'sha256 tbs))))
 
@@ -127,7 +130,7 @@
      ;; Note that we need to normalize the doc *as this proof is expected to check it*
      ;; at this stage.  That means modifying the proof section before normalization
      ;; appropriately.
-     (define/override (verify-proof canonicalized-doc creator proof #;expectedProofPurpose)
+     (define/public (verify-proof canonicalized-doc creator proof #;expectedProofPurpose)
        ;; TODO: Iterate through all keys until we find the right one?
        ;; (define pubkey-field
        ;;   (car (hash-ref creator sec:publicKey-sym)))
