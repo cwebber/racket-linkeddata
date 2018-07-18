@@ -78,12 +78,12 @@
     (define/public (verify-proofs doc #;expectedProofPurpose)
       (not-implemented))))
 
-(define linked-data-signature-2015-suite
+(define cwebber-signature-2018-suite
   (new
    (class signature-suite%
      (super-new)
      (define/override (suite-uri)
-       "https://w3id.org/security#GraphSignature2012")
+       "https://dustycloud.org/#CwebberSignature2018")
 
      (define/override (normalize doc)
        (json-ld->urdna2015-nquads-string doc))
@@ -93,7 +93,7 @@
      ;; (before the proof's signature is added)
      ;; FIXME: We have to add proofPurpose specific behavior here
      ;; FIXME: We need to support multiple proofs
-     (define/override (make-proof-object doc private-key sig-options
+     (define/override (make-proof-object canonicalized-doc private-key sig-options
                                          #;proofPurpose)
        (define proof-obj
          `#hasheq((@type . ,(suite-uri))))
@@ -126,7 +126,13 @@
        ;; Return proof
        proof-obj)
 
-     (define/override (verify-proofs doc #;expectedProofPurpose)
+     ;; Should this be verify proofs, or verify proof?
+     ;; We need to verify each proof individually against a suite that's
+     ;; available, right?
+     ;; Note that we need to normalize the doc *as this proof is expected to check it*
+     ;; at this stage.  That means modifying the proof section before normalization
+     ;; appropriately.
+     (define/override (verify-proof canonicalized-doc creator proof #;expectedProofPurpose)
        ;; TODO: Iterate through all keys until we find the right one?
        ;; (define pubkey-field
        ;;   (car (hash-ref creator sec:publicKey-sym)))
@@ -135,45 +141,17 @@
        (define pubkey
          (pem->public-key pubkey-pem))
        (define sig-value
-         (match (hash-ref signature sec:signatureValue-sym)
+         (match (hash-ref proof sec:signatureValue-sym)
            [(list (? hash? sv))
             (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
-       (digest/verify pubkey 'sha256 obj sig-value)))))
-
-(define rsa-signature-2018-suite
-  (suite
-   "https://w3id.org/security#LinkedDataSignature2018"
-   json-ld->urdna2015-nquads-string
-   #;canonize-quads
-   ;; hash-proc
-   (lambda (obj)
-     (digest 'sha256 obj))
-   ;; sign-proc
-   (lambda (obj privkey)
-     (digest/sign privkey 'sha256 obj))
-   ;; make-signature-object-proc
-   (simple-signature-object-maker sec:LinkedDataSignature2018)
-   ;; verify-proc
-   (lambda (obj creator signature)
-     ;; TODO: Iterate through all keys until we find the right one?
-     ;; (define pubkey-field
-     ;;   (car (hash-ref creator sec:publicKey-sym)))
-     (define pubkey-pem
-       (hash-ref (car (hash-ref creator sec:publicKeyPem-sym)) '@value))
-     (define pubkey
-       (pem->public-key pubkey-pem))
-     (define sig-value
-       (match (hash-ref signature sec:signatureValue-sym)
-         [(list (? hash? sv))
-          (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
-     (digest/verify pubkey 'sha256 obj sig-value))))
+       (digest/verify pubkey 'sha256 canonicalized-doc sig-value)))))
 
 ;; The whole mechanism of signature options both being a dictionary of
 ;; options that are passed in and also something attached *to the
 ;; signature json* seems just very... weird to me.
 
 (define (lds-sign-jsonld document sig-options private-key
-                         #:suite [suite linked-data-signature-2015-suite]
+                         #:suite [suite cwebber-signature-2018-suite]
                          #:legacy-signature-field? [legacy-signature-field? #f])
   "Sign a json-ld document."
   (lds-sign-main document (send suite jsonld-normalize document)
@@ -187,7 +165,7 @@
                         [suite rsa-signature-2018-suite])
   "Sign a list of n-quads."
   (lds-sign-main '(TODO: frame here?)
-                 (suite-canonize-quads suite document)
+                 (suite-canonicalize-quads suite document)
                  sig-options private-key))
 
 (define (lds-sign-main document canonicalized-document sig-options private-key suite
@@ -220,10 +198,7 @@
       [(list expanded) expanded]))
 
   (define pre-compacted-output
-    (hash-set expanded-document (if legacy-signature-field?
-                                    sec:signature-sym
-                                    sec:proof-sym)
-              (suite-make-signature-object suite signature-value sig-options)))
+    (hash-set expanded-document sec:proof-sym proof-object))
 
   ;; TODO: Compact it again with its original context... and the context of
   ;; the proof?  Or, look again at what pyld_sig is doing here
@@ -233,7 +208,8 @@
   ;; 6: Return output as the signed linked data document.
   (compact-jsonld pre-compacted-output (hash-ref document '@context #hasheq())))
 
-(define (create-verify-hash canonicalized-document suite sig-options)
+;; TODO: This is very 2015, and isn't as general as it may appear
+#;(define (create-verify-hash canonicalized-document suite sig-options)
   ;; 1: Let options be a copy of input options. 
   ;; 2: If type, id, or signatureValue exists in options, remove the entry. 
   (let* ([options
@@ -278,14 +254,15 @@
                            ;; Don't load unknown urls, fallback to the
                            ;; fallback loader instead
                            #:fallback-loader (context-loader))])
-            (suite-canonize-jsonld suite options))]
+            
+            (send suite canonicalize-jsonld suite options))]
          ;; 4.2: Hash canonicalized options document using the message digest
          ;; algorithm (e.g. SHA-256) and set output to the result.
          ;; 4.3: Hash canonicalized document using the message digest algorithm
          ;; (e.g. SHA-256) and append it to output.
          [output
-          (bytes-append (suite-hash suite canonicalized-options)
-                        (suite-hash suite canonicalized-document))])
+          (bytes-append (send suite hash suite canonicalized-options)
+                        (send suite hash suite canonicalized-document))])
 
     ;; 5: has a note: It is presumed that the 64-byte output will be used in a
     ;; signing algorithm that includes its own hashing algorithm, such as RS256
@@ -298,61 +275,73 @@
   "Returns a boolean identifying whether the signature succeeded or failed.
 If any object, such as the key or etc is unable to be retrieved, this will
 raise an exception instead."
-  (define expanded
-    (car (expand-jsonld signed-document)))
-  (define proof-field
-    (cond [(hash-has-key? expanded sec:proof-sym)
-           sec:proof-sym]
-          [(hash-has-key? expanded sec:signature-sym)
-           sec:signature-sym]
-          [else (error "Missing proof/signature field")]))
-  ;; FIXME: Handle multiple proofs
-  (define proof-node
-    (car (hash-ref expanded proof-field)))
-  ;; 1. Get the public key by dereferencing its URL identifier in the
-  ;; signature node of the default graph of signed document. Confirm
-  ;; that the linked data document that describes the public key
-  ;; specifies its owner and that its owner's URL identifier can be
-  ;; dereferenced to reveal a bi-directional link back to the
-  ;; key. Ensure that the key's owner is a trusted entity before
-  ;; proceeding to the next step.
-  ;;
-  ;; FIXME: I really think owner is broken, though Manu and Dave
-  ;; aren't convinced:
-  ;;   https://github.com/w3c-dvcg/ld-signatures/issues/20
-  (define creator
-    (match (hash-ref proof-node dc:creator-sym 'nothing)
-      [(list (? hash? key))
-       ;; TODO: we should add an always-fetch-key option
-       key]
-      [(list (? string? key-uri))
-       (match (expand-jsonld (fetch-jsonld key-uri))
-         [(list (? hash? key))
-          key])]
-      [_ (error "Missing or invalid creator field")]))
-  ;; Throw an exception if the owner doesn't match
-  (verify-owner creator)
-  ;; 2. Let document be a copy of signed document.
-  (define document (hash-remove signed-document proof-field))
-  ;; 3. Remove any signature nodes from the default graph in document and
-  ;; save it as signature.
-  (define signature proof-node)
-  ;; 4. Generate a canonicalized document by canonicalizing document
-  ;; according to the canonicalization algorithm (e.g. the GCA2015
-  ;; [RDF-DATASET-NORMALIZATION] algorithm).
-  (define canonicalized-document
-   (suite-canonize-jsonld suite document))
+  (call/ec
+   (lambda (return)
+     (define expanded
+       (car (expand-jsonld signed-document)))
+     (define proof-key
+       (cond [(hash-has-key? expanded sec:proof-sym)
+              sec:proof-sym]
+             [(hash-has-key? expanded sec:signature-sym)
+              sec:signature-sym]
+             [else (error "Missing proof/signature field")]))
+     (for ([proof-node (hash-ref expanded proof-key)])
+       ;; FIXME: Handle @list objects here
+       ;; 1. Get the public key by dereferencing its URL identifier in the
+       ;; signature node of the default graph of signed document. Confirm
+       ;; that the linked data document that describes the public key
+       ;; specifies its owner and that its owner's URL identifier can be
+       ;; dereferenced to reveal a bi-directional link back to the
+       ;; key. Ensure that the key's owner is a trusted entity before
+       ;; proceeding to the next step.
+       ;;
+       (define creator
+         (match (hash-ref proof-node dc:creator-sym 'nothing)
+           [(list (? hash? key))
+            ;; TODO: we should add an always-fetch-key option
+            key]
+           [(list (? string? key-uri))
+            (match (expand-jsonld (fetch-jsonld key-uri))
+              [(list (? hash? key))
+               key])]
+           [_ (error "Missing or invalid creator field")]))
+       ;; Throw an exception if the owner doesn't match
+       ;; FIXME: I really think owner is broken, though Manu and Dave
+       ;; aren't convinced:
+       ;;   https://github.com/w3c-dvcg/ld-signatures/issues/20
+       #;(verify-owner creator)
+       ;; 2. Let document be a copy of signed document.
+       ;;
+       ;; The spec text isn't quite right ISTM.  What we need to do is
+       ;; remove the signature field from the proof node and re-attach
+       ;; it to the document.
+       (define document-to-canonicalize
+         (let ([proof-node-without-sig
+                (hash-remove proof-node sec:signatureValue-sym)])
+           (hash-set expanded proof-key
+                     proof-node-without-sig)))
 
-  ;; 5. Create a value tbv that represents the data to be verified, and set
-  ;; it to the result of running the Create Verify Hash Algorithm, passing
-  ;; the information in signature.
-  (define tbv
-    (create-verify-hash canonicalized-document suite signature))
+       ;; 3. Remove any signature nodes from the default graph in document and
+       ;; save it as signature.
+       #;(define signature proof-node) ; we already have proof-node
+       ;; 4. Generate a canonicalized document by canonicalizing document
+       ;; according to the canonicalization algorithm (e.g. the GCA2015
+       ;; [RDF-DATASET-NORMALIZATION] algorithm).
+       (define canonicalized-document
+         (send suite canonicalize-jsonld document-to-canonicalize))
 
-  ;; 6. Pass the signatureValue, tbv, and the public key to the signature
-  ;; algorithm (e.g. JSON Web Signature using RSASSA-PKCS1-v1_5
-  ;; algorithm). Return the resulting boolean value.
-  (suite-verify suite tbv creator signature))
+       ;; 5. Create a value tbv that represents the data to be verified, and set
+       ;; it to the result of running the Create Verify Hash Algorithm, passing
+       ;; the information in signature.
+       #;(define tbv
+       (create-verify-hash canonicalized-document suite proof-node))
+
+       ;; 6. Pass the signatureValue, tbv, and the public key to the signature
+       ;; algorithm (e.g. JSON Web Signature using RSASSA-PKCS1-v1_5
+       ;; algorithm). Return the resulting boolean value.
+       (when (not (send suite verify-proof canonicalized-document creator proof-node))
+         (return #f)))
+     #t)))
 
 (define (verify-owner key)
   ;; Now let's make sure that the link is bidirectional.
