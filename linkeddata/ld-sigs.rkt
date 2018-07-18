@@ -100,9 +100,9 @@
                        (or (hash-ref sig-options dc:created-sym #f)
                            (http-date-str (seconds->date (current-seconds) #f)))))
        (define (maybe-add-to-proof! options-key set-key)
-         (when (hash-has-key? sig-options set-key)
+         (when (hash-has-key? sig-options options-key)
            (set! proof-obj (hash-set proof-obj set-key
-                                     (hash-ref sig-options set-key)))))
+                                     (hash-ref sig-options options-key)))))
        ;; Add creator/nonce/domain fields, if appropriate
        (maybe-add-to-proof! 'creator dc:creator-sym)
        (maybe-add-to-proof! 'nonce sec:nonce-sym)
