@@ -8,7 +8,8 @@
          crypto
          json
          net/base64
-         linkeddata/pem)
+         linkeddata/pem
+         net/url)
 
 (define (term-maker vocab-url)
   (lambda (term)
@@ -243,6 +244,11 @@
   "Returns a boolean identifying whether the signature succeeded or failed.
 If any object, such as the key or etc is unable to be retrieved, this will
 raise an exception instead."
+  (define (string-value-object? obj)
+    (and (hash-eq? obj)
+         (not (hash-has-key? obj '@type))
+         (hash-has-key? obj '@value)
+         (string? (hash-ref obj '@value))))
   (call/ec
    (lambda (return)
      (define expanded
@@ -257,13 +263,13 @@ raise an exception instead."
        ;; Fetch "creator" field, which is really the public key that signed this
        (define creator
          (match (hash-ref proof-node dc:creator-sym 'nothing)
+           [(list (? string-value-object? key-data))
+            (match (expand-jsonld (fetch-jsonld (string->url (hash-ref key-data '@value))))
+              [(list (? hash? key))
+               key])]
            [(list (? hash? key))
             ;; TODO: we should add an always-fetch-key option
             key]
-           [(list (? string? key-uri))
-            (match (expand-jsonld (fetch-jsonld key-uri))
-              [(list (? hash? key))
-               key])]
            [_ (error "Missing or invalid creator field")]))
        ;; Throw an exception if the owner doesn't match
        ;; FIXME: I really think owner is broken, though Manu and Dave
