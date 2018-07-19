@@ -239,7 +239,7 @@
 
 ;; FIXME: We shouldn't select the suite ourselves... we should be
 ;;   querying a registry of suites depending on the proof type
-(define (lds-verify-jsonld signed-document suite sig-options
+(define (lds-verify-jsonld signed-document suite
                            #:fetch-jsonld [fetch-jsonld http-get-jsonld])
   "Returns a boolean identifying whether the signature succeeded or failed.
 If any object, such as the key or etc is unable to be retrieved, this will
