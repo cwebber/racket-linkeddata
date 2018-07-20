@@ -237,9 +237,19 @@
     ;; ^--- response to that spectext: Yeah, we use digest/sign
     output))
 
-;; FIXME: We shouldn't select the suite ourselves... we should be
-;;   querying a registry of suites depending on the proof type
-(define (lds-verify-jsonld signed-document suite
+(define (make-suite-registry suites)
+  (make-immutable-hash
+   (for/list ([suite suites])
+     (cons (send suite suite-uri) suite))))
+
+(define suite-registry
+  (make-parameter
+   (make-suite-registry
+    (list cwebber-signature-2018-suite))))
+
+(provide suite-registry)
+
+(define (lds-verify-jsonld signed-document
                            #:fetch-jsonld [fetch-jsonld http-get-jsonld])
   "Returns a boolean identifying whether the signature succeeded or failed.
 If any object, such as the key or etc is unable to be retrieved, this will
@@ -260,6 +270,15 @@ raise an exception instead."
               sec:signature-sym]
              [else (error "Missing proof/signature field")]))
      (for ([proof-node (hash-ref expanded proof-key)])
+       (define suite-type
+         (match (hash-ref proof-node '@type #f)
+           [(list (? string? uri))
+            uri]
+           [_ (error "Proof must have a single value for type")]))
+       (define suite
+         (or (hash-ref (suite-registry) suite-type #f)
+             (error (format "No proof suite found for type ~a" suite-type))))
+
        ;; Fetch "creator" field, which is really the public key that signed this
        (define creator
          (match (hash-ref proof-node dc:creator-sym 'nothing)
