@@ -11,6 +11,18 @@
          linkeddata/pem
          net/url)
 
+(module+ test
+  (require rackunit crypto/libcrypto)
+  (define rsa-impl (get-pk 'rsa libcrypto-factory))
+  (when (eq? (crypto-factories) '())
+    (crypto-factories (list libcrypto-factory)))
+  (define privkey (generate-private-key rsa-impl '((nbits 512))))
+  (define pubkey (pk-key->public-only-key privkey))
+
+  ;; just to have another set to test against
+  (define privkey2 (generate-private-key rsa-impl '((nbits 512))))
+  (define pubkey2 (pk-key->public-only-key privkey2)))
+
 (define (term-maker vocab-url)
   (lambda (term)
     (define str-val
@@ -319,6 +331,35 @@ raise an exception instead."
        (when (not (send suite verify-proof canonicalized-document creator proof-node))
          (return #f)))
      #t)))
+
+(module+ test
+  (define lady-gaga-concert
+    '#hasheq((@context
+              . (#hasheq((ical . "http://www.w3.org/2002/12/cal/ical#")
+                         (xsd . "http://www.w3.org/2001/XMLSchema#")
+                         (ical:dtstart
+                          . #hasheq((@type . "xsd:dateTime")))
+                         (proof . "https://w3id.org/security#proof"))
+                        "https://w3id.org/security/v1"))
+             (ical:summary . "Lady Gaga Concert")
+             (ical:location . "New Orleans Arena, New Orleans, Louisiana, USA")
+             (ical:dtstart . "2011-04-09T20:00Z")))
+  (define some-sig-options
+    `#hasheq((creator . ,(make-immutable-hasheq `((,sec:publicKeyPem-sym
+                                                   . ,(public-key->pem pubkey)))))
+             (nonce . "abop;ihaoighiopsahgoihgsd")))
+
+  (test-true
+   "Correct signature passes verification"
+   (lds-verify-jsonld (lds-sign-jsonld lady-gaga-concert some-sig-options
+                                       privkey
+                                       #:suite cwebber-signature-2018-suite)))
+
+  (test-false
+   "Signature signed by wrong key fails verification"
+   (lds-verify-jsonld (lds-sign-jsonld lady-gaga-concert some-sig-options
+                                       privkey2  ; not the same key as in some-sig-options
+                                       #:suite cwebber-signature-2018-suite))))
 
 (define (verify-owner key)
   ;; Now let's make sure that the link is bidirectional.
