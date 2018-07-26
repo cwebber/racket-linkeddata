@@ -65,6 +65,10 @@
 ;;   "localhost-only" context URI.  So we need to protect against
 ;;   that while also not screwing over development environments.
 ;;   This is super hard to do.  If only we lived in an ocap world :<
+;;
+;;   Oh!  We should use "security guards":
+;;     https://docs.racket-lang.org/reference/securityguards.html
+;;     https://groups.google.com/d/msg/racket-users/csksIce4SBw/kMA3fgcXCAAJ
 (define (http-get-jsonld url #:schemes [schemes '("http" "https")])
   ;; call/input-url will happily read file:// urls from disk so...
   ;; we need to prevent that :P
