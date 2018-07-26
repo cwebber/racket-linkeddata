@@ -2,6 +2,10 @@
 
 ;;; TODO: Generalize into ld-proofs.rkt
 
+(provide lds-sign-jsonld
+         lds-verify-jsonld
+         suite-registry)
+
 (require linkeddata/json-ld
          linkeddata/n-quads
          linkeddata/date-utils
@@ -185,8 +189,6 @@
   ;; Compact the signed document using the context from the original document
   (compact-jsonld pre-compacted-output (hash-ref document '@context #hasheq())))
 
-(provide lds-sign-jsonld)
-
 ;; TODO: This is very 2015, and isn't as general as it may appear
 #;(define (create-verify-hash canonicalized-document suite sig-options)
   ;; 1: Let options be a copy of input options. 
@@ -258,8 +260,6 @@
   (make-parameter
    (make-suite-registry
     (list cwebber-signature-2018-suite))))
-
-(provide suite-registry)
 
 (define (lds-verify-jsonld signed-document
                            #:fetch-jsonld [fetch-jsonld http-get-jsonld])
