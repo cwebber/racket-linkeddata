@@ -1,10 +1,42 @@
-#lang racket
+#lang at-exp racket
 
 ;;; TODO: Generalize into ld-proofs.rkt
 
-(provide lds-sign-jsonld
-         lds-verify-jsonld
-         suite-registry)
+(require ;; inline docs stuff
+         scribble/srcdoc
+         (for-doc racket/base
+                  (except-in scribble/manual url)))
+
+(provide
+ (proc-doc/names
+  lds-sign-jsonld
+  ;; contract
+  (->* (hash-eq?                                    ; required args
+        (or/c (implementation?/c proof-purpose-interface)
+              #t #f)
+        private-key?
+        hash-eq? hash-eq?)
+       (#:suite (implementation?/c suite-interface) ; optional args
+        #:legacy-signature-field? boolean?)
+       hash-eq?)                                    ; returns
+  (;; required args
+   (document proof-purpose private-key sig-options pp-options)
+   ;; optional args
+   ([suite cwebber-signature-2018-suite]
+    [legacy-signature-field? #f]))
+  ;; documentation
+  @{Returns a copy of @racketidfont{document} with a proof added, signed
+    with @racketidfont{private-key}.  The proof will be constructed
+    differently depending on which @racketidfont{suite} is used.
+
+    If @racketidfont{proof-purpose} is an implementation of the
+    @racket{proof-purpose-interface} then})
+
+ lds-verify-jsonld
+ suite-registry
+
+ suite-interface
+ proof-purpose-interface)
 
 (require linkeddata/json-ld
          linkeddata/n-quads
