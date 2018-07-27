@@ -207,7 +207,8 @@
            [(list (? hash? sv))
             (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
        (and (digest/verify pubkey 'sha256 canonicalized-doc sig-value)
-            (send proof-purpose verify creator proof))))))
+            (or (not proof-purpose)
+                (send proof-purpose verify creator proof)))))))
 
 (define proof-purpose-interface
   (interface ()
@@ -221,6 +222,7 @@
 (define notarize-pp
   (new
    (class object%
+     (super-new)
      (define/public (uri)
        ;; FIXME
        "https://example.org/#notarize")
@@ -234,6 +236,7 @@
 (define ocap-ld-pp
   (new
    (class object%
+     (super-new)
      (define/public (uri)
        ;; FIXME
        "https://example.org/#TODO-ocap-ld")
@@ -346,7 +349,11 @@
    (make-registry
     (list notarize-pp ocap-ld-pp))))
 
-(define (lds-verify-jsonld signed-document expected-pp
+(define (lds-verify-jsonld signed-document
+                           ;; (or/c 'all #f (implementation?/c proof-purpose-interface)
+                           ;;       (listof (or/c #f
+                           ;;                     (implementation?/c proof-purpose-interface))))
+                           expected-pp
                            #:fetch-jsonld [fetch-jsonld http-get-jsonld]
                            #:empty-proof-purpose-ok? [empty-proof-purpose-ok? #f])
   "Returns a boolean identifying whether the signature succeeded or failed.
@@ -358,8 +365,6 @@ raise an exception instead."
          (hash-has-key? obj '@value)
          (string? (hash-ref obj '@value))))
 
-  ;; TODO: Filter on expected-pp here
-
   (call/ec
    (lambda (return)
      (define expanded
@@ -370,12 +375,65 @@ raise an exception instead."
              [(hash-has-key? expanded sec:signature-sym)
               sec:signature-sym]
              [else (error "Missing proof/signature field")]))
-     (for ([proof-node (hash-ref expanded proof-key)])
+
+     (define proofs
+       (let ([all-proofs
+              (hash-ref expanded proof-key '())])
+         (if (eq? expected-pp 'all)
+             ;; if the "all" flag is given, then we want to check all proofs,
+             ;; regardless of proofPurpose.
+             all-proofs
+             ;; otherwise, let's filter them
+             (filter (lambda (p-node)
+                       (define (check-one expected-pp)
+                         (cond
+                           ;; expected proofPurpose is empty, and the empty
+                           ;; flag was supplied
+                           [(and (not (hash-has-key? p-node sec:proofPurpose-sym))
+                                 (eq? expected-pp #f))
+                            #t]
+                           ;; a specific proof-purpose
+                           ;; TODO: Should we allow passing in proof purpose urls
+                           ;;   rather than proof-purpose objects?
+                           [(and (is-a? expected-pp proof-purpose-interface)
+                                 (hash-has-key? p-node sec:proofPurpose-sym)
+                                 (equal? (send expected-pp url)
+                                         (car (hash-ref p-node sec:proofPurpose-sym))))
+                            #t]
+                           ;; doesn't match any of those...
+                           [else #f]))
+                       (cond
+                         ;; Do any of these match?
+                         [(list? expected-pp)
+                          (call/ec
+                           (lambda (return)
+                             (for ([e-pp expected-pp])
+                               (when (check-one e-pp)
+                                 (return #t)))
+                             #f))]
+                         [else
+                          (check-one expected-pp)]))
+                     all-proofs))))
+     
+     (when (eq? proofs '())
+       (error (format "No proofs matching expected-pp found: ~a"
+                      expected-pp)))
+
+     (for ([proof-node proofs])
        (define suite-type
          (match (hash-ref proof-node '@type #f)
            [(list (? string? uri))
             uri]
            [_ (error "Proof must have a single value for type")]))
+       (define pp-url
+         (match (hash-ref proof-node sec:proofPurpose-sym '())
+           ['() #f]
+           [(list url) url]
+           [_ (error "Proof has multiple proofPurposes")]))
+       (define proof-purpose
+         (and pp-url
+              (hash-ref (proof-purpose-registry) pp-url)))
+
        (define suite
          (or (hash-ref (suite-registry) suite-type #f)
              (error (format "No proof suite found for type ~a" suite-type))))
@@ -395,6 +453,7 @@ raise an exception instead."
        ;; FIXME: I really think owner is broken, though Manu and Dave
        ;; aren't convinced:
        ;;   https://github.com/w3c-dvcg/ld-signatures/issues/20
+       ;; Probably the right thing is to move this into the proofPurpose logic.
        #;(verify-owner creator)
 
        ;; The spec text doesn't say this.  What we're doing here is
