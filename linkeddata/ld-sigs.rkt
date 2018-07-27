@@ -1,4 +1,4 @@
-#lang at-exp racket
+#lang racket
 
 ;;; TODO: Generalize into ld-proofs.rkt
 
@@ -25,12 +25,21 @@
    ([suite cwebber-signature-2018-suite]
     [legacy-signature-field? #f]))
   ;; documentation
-  @{Returns a copy of @racketidfont{document} with a proof added, signed
-    with @racketidfont{private-key}.  The proof will be constructed
-    differently depending on which @racketidfont{suite} is used.
+  (list
+   "Returns a copy of " (racketidfont "document") " with a proof added, "
+   "signed with " (racketidfont "private-key") ".  The proof will be constructed "
+   "differently depending on which @racketidfont{suite} is used."
+   "\n\n"
+   "If " (racketidfont "proof-purpose") " is an implementation of the "
+   (racket "proof-purpose-interface") " then")
 
-    If @racketidfont{proof-purpose} is an implementation of the
-    @racket{proof-purpose-interface} then})
+  ;; @{Returns a copy of @racketidfont{document} with a proof added, signed
+  ;;   with @racketidfont{private-key}.  The proof will be constructed
+  ;;   differently depending on which @racketidfont{suite} is used.
+  ;;
+  ;;   If @racketidfont{proof-purpose} is an implementation of the
+  ;;   @racket{proof-purpose-interface} then}
+  )
 
  lds-verify-jsonld
  suite-registry
@@ -73,6 +82,8 @@
 
 (define-values (sec:proof sec:proof-sym)
   (sec-term "proof"))
+(define-values (sec:proofPurpose sec:proofPurpose-sym)
+  (sec-term "proofPurpose"))
 (define-values (sec:signature sec:signature-sym)
   (sec-term "signature"))
 (define-values (sec:owner sec:owner-sym)
@@ -107,18 +118,15 @@
 (define (not-implemented)
   (error "Not implemented"))
 
-(define proof-purpose%
-  (class object%))
-
 (define suite-interface
   (interface ()
     ;; -> string?
-    suite-uri
+    uri
     ;; args: doc
-    ;;       hasheq? -> string?
+    ;;       hash-eq? -> string?
     canonicalize
     ;; args: expanded-doc private-key  sig-options
-    ;;       jsobj?           private-key? hasheq? -> jsobj?
+    ;;       jsobj?           private-key? hash-eq? -> jsobj?
     make-proof-object
     ;; args: canonicalized-doc creator proof
     ;;       jsobj?            jsobj?  jsobj? -> boolean?
@@ -128,7 +136,7 @@
   (new
    (class object%
      (super-new)
-     (define/public (suite-uri)
+     (define/public (uri)
        "https://dustycloud.org/#CwebberSignature2018")
 
      (define/public (canonicalize doc)
@@ -139,23 +147,31 @@
      ;; (before the proof's signature is added)
      ;; FIXME: We have to add proofPurpose specific behavior here
      ;; FIXME: We need to support multiple proofs
+     ;; FIXME: private-key should move into sig-options.
      (define/public (make-proof-object expanded-doc private-key sig-options
-                                       #;proofPurpose)
+                                       proof-purpose pp-options)
        (define proof-obj
-         `#hasheq((@type . ,(suite-uri))))
+         `#hasheq((@type . ,(uri))))
+       (define (proof-set! key val)
+         (set! proof-obj
+               (hash-set proof-obj key val)))
        ;; Add created field, defaulting to today
-       (set! proof-obj
-             (hash-set proof-obj dc:created-sym
-                       (or (hash-ref sig-options dc:created-sym #f)
-                           (http-date-str (seconds->date (current-seconds) #f)))))
+       (proof-set! dc:created-sym
+                   (or (hash-ref sig-options dc:created-sym #f)
+                       (http-date-str (seconds->date (current-seconds) #f))))
        (define (maybe-add-to-proof! options-key set-key)
          (when (hash-has-key? sig-options options-key)
-           (set! proof-obj (hash-set proof-obj set-key
-                                     (hash-ref sig-options options-key)))))
+           (proof-set! set-key (hash-ref sig-options options-key))))
        ;; Add creator/nonce/domain fields, if appropriate
        (maybe-add-to-proof! 'creator dc:creator-sym)
        (maybe-add-to-proof! 'nonce sec:nonce-sym)
        (maybe-add-to-proof! 'domain sec:domain-sym)
+
+       (when proof-purpose
+         (proof-set! sec:proofPurpose-sym
+                     (send proof-purpose uri))
+         (set! proof-obj
+               (send proof-purpose add-fields-to-proof proof-obj pp-options)))
 
        ;; Prepare to get signature value.  We need to simulate adding the proof
        ;; to the document without the signature field
@@ -167,9 +183,7 @@
          (bytes->string/utf-8 (base64-encode (digest/sign private-key 'sha256 tbs))))
 
        ;; Attach the signature to the proof
-       (set! proof-obj
-             (hash-set proof-obj sec:signatureValue-sym
-                       signature-value))
+       (proof-set! sec:signatureValue-sym signature-value)
 
        ;; Return proof
        proof-obj)
@@ -180,7 +194,7 @@
      ;; Note that we need to canonicalize the doc *as this proof is expected to check it*
      ;; at this stage.  That means modifying the proof section before normalization
      ;; appropriately.
-     (define/public (verify-proof canonicalized-doc creator proof #;expectedProofPurpose)
+     (define/public (verify-proof canonicalized-doc creator proof proof-purpose)
        ;; TODO: Iterate through all keys until we find the right one?
        ;; (define pubkey-field
        ;;   (car (hash-ref creator sec:publicKey-sym)))
@@ -192,7 +206,41 @@
          (match (hash-ref proof sec:signatureValue-sym)
            [(list (? hash? sv))
             (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
-       (digest/verify pubkey 'sha256 canonicalized-doc sig-value)))))
+       (and (digest/verify pubkey 'sha256 canonicalized-doc sig-value)
+            (send proof-purpose verify creator proof))))))
+
+(define proof-purpose-interface
+  (interface ()
+    ;; -> string?
+    uri
+    ;; hash-eq? hash-eq? -> hash-eq?
+    add-fields-to-proof
+    ;; hash-eq? hash-eq? -> boolean?
+    verify))
+
+(define notarize-pp
+  (new
+   (class object%
+     (define/public (uri)
+       ;; FIXME
+       "https://example.org/#notarize")
+     ;; No extra special steps added.
+     (define/public (add-fields-to-proof proof options)
+       proof)
+     ;; No extra special step taken.
+     (define/public (verify creator proof)
+       #t))))
+
+(define ocap-ld-pp
+  (new
+   (class object%
+     (define/public (uri)
+       ;; FIXME
+       "https://example.org/#TODO-ocap-ld")
+     (define/public (add-fields-to-proof proof options)
+       'TODO)
+     (define/public (verify creator proof)
+       'TODO))))
 
 ;; See https://github.com/w3c-dvcg/ld-signatures/issues/19
 #;(define (lds-sign-quads document sig-options private-key
@@ -202,7 +250,7 @@
                  (suite-canonicalize-quads suite document)
                  sig-options private-key))
 
-(define (lds-sign-jsonld document sig-options private-key
+(define (lds-sign-jsonld document proof-purpose private-key sig-options pp-options
                          #:suite [suite cwebber-signature-2018-suite]
                          #:legacy-signature-field? [legacy-signature-field? #f])
   ;; Expand the document and attach the proof
@@ -213,7 +261,7 @@
   ;; Generate the proof document off the canonicalized document
   (define proof-object
     (send suite make-proof-object
-          expanded-document private-key sig-options))
+          expanded-document private-key sig-options proof-purpose pp-options))
 
   (define pre-compacted-output
     (hash-set expanded-document sec:proof-sym proof-object))
@@ -283,18 +331,24 @@
     ;; ^--- response to that spectext: Yeah, we use digest/sign
     output))
 
-(define (make-suite-registry suites)
+(define (make-registry registrants)
   (make-immutable-hash
-   (for/list ([suite suites])
-     (cons (send suite suite-uri) suite))))
+   (for/list ([registrant registrants])
+     (cons (send registrant uri) registrant))))
 
 (define suite-registry
   (make-parameter
-   (make-suite-registry
+   (make-registry
     (list cwebber-signature-2018-suite))))
 
-(define (lds-verify-jsonld signed-document
-                           #:fetch-jsonld [fetch-jsonld http-get-jsonld])
+(define proof-purpose-registry
+  (make-parameter
+   (make-registry
+    (list notarize-pp ocap-ld-pp))))
+
+(define (lds-verify-jsonld signed-document expected-pp
+                           #:fetch-jsonld [fetch-jsonld http-get-jsonld]
+                           #:empty-proof-purpose-ok? [empty-proof-purpose-ok? #f])
   "Returns a boolean identifying whether the signature succeeded or failed.
 If any object, such as the key or etc is unable to be retrieved, this will
 raise an exception instead."
@@ -303,6 +357,9 @@ raise an exception instead."
          (not (hash-has-key? obj '@type))
          (hash-has-key? obj '@value)
          (string? (hash-ref obj '@value))))
+
+  ;; TODO: Filter on expected-pp here
+
   (call/ec
    (lambda (return)
      (define expanded
@@ -360,7 +417,8 @@ raise an exception instead."
        (create-verify-hash canonicalized-document suite proof-node))
 
        ;; If this node isn't valid, then we return #f.
-       (when (not (send suite verify-proof canonicalized-document creator proof-node))
+       (when (not (send suite verify-proof canonicalized-document creator
+                        proof-node proof-purpose))
          (return #f)))
      #t)))
 
@@ -383,15 +441,19 @@ raise an exception instead."
 
   (test-true
    "Correct signature passes verification"
-   (lds-verify-jsonld (lds-sign-jsonld lady-gaga-concert some-sig-options
+   (lds-verify-jsonld (lds-sign-jsonld lady-gaga-concert #f
                                        privkey
-                                       #:suite cwebber-signature-2018-suite)))
+                                       some-sig-options #hasheq()
+                                       #:suite cwebber-signature-2018-suite)
+                      #f))
 
   (test-false
    "Signature signed by wrong key fails verification"
-   (lds-verify-jsonld (lds-sign-jsonld lady-gaga-concert some-sig-options
+   (lds-verify-jsonld (lds-sign-jsonld lady-gaga-concert #f
                                        privkey2  ; not the same key as in some-sig-options
-                                       #:suite cwebber-signature-2018-suite))))
+                                       some-sig-options #hasheq()
+                                       #:suite cwebber-signature-2018-suite)
+                      #f)))
 
 (define (verify-owner key)
   ;; Now let's make sure that the link is bidirectional.
