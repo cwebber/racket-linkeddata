@@ -6,6 +6,8 @@
 
 (provide pk pk-values)
 
+(require racket/pretty)
+
 ;; kludge: emacs mis-renders this as a string, so...
 (define hash-semicolon-semicolon
   (list->string '(#\# #\; #\;)))
@@ -15,8 +17,7 @@
   "Peek at values for print debugging, but return 'em"
   (display hash-semicolon-semicolon)
   (display " pk\n")
-  (write vals)
-  (newline)
+  (pretty-print vals)
   ;; return the last value
   (last vals))
 
