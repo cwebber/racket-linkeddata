@@ -329,24 +329,6 @@ fold instead of fold-right >:)"
          (cons k (hash-ref jsobj k)))
        (sort (hash-keys jsobj) compare)))
 
-;; for debugging
-(define (pk . vals)
-  "Peek at values for print debugging, but return 'em"
-  (display ";;; ")
-  (write vals)
-  (newline)
-  ;; return the last value
-  (last vals))
-
-(define-syntax-rule (pk-values print-these ... body)
-  ;; Like pk, but supporting multiple value return
-  (call-with-values
-      (lambda () body)
-    (lambda vals
-      (display "#;\n")
-      (pretty-print (list print-these ... '*pk-values:* vals))
-      (apply values vals))))
-
 (define (listy? obj)
   "Fast close-enough check to see if something's list-like"
   (or (pair? obj)
