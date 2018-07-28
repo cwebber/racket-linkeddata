@@ -14,13 +14,12 @@
   (->* (hash-eq?                                    ; required args
         (or/c (implementation?/c proof-purpose-interface)
               #t #f)
-        private-key?
         hash-eq? hash-eq?)
        (#:suite (implementation?/c suite-interface) ; optional args
         #:legacy-signature-field? boolean?)
        hash-eq?)                                    ; returns
   (;; required args
-   (document proof-purpose private-key sig-options pp-options)
+   (document proof-purpose sig-options pp-options)
    ;; optional args
    ([suite cwebber-signature-2018-suite]
     [legacy-signature-field? #f]))
@@ -148,8 +147,10 @@
      ;; FIXME: We have to add proofPurpose specific behavior here
      ;; FIXME: We need to support multiple proofs
      ;; FIXME: private-key should move into sig-options.
-     (define/public (make-proof-object expanded-doc private-key sig-options
+     (define/public (make-proof-object expanded-doc sig-options
                                        proof-purpose pp-options)
+       (define private-key
+         (hash-ref sig-options 'private-key))
        (define proof-obj
          `#hasheq((@type . ,(uri))))
        (define (proof-set! key val)
@@ -253,7 +254,7 @@
                  (suite-canonicalize-quads suite document)
                  sig-options private-key))
 
-(define (lds-sign-jsonld document proof-purpose private-key sig-options pp-options
+(define (lds-sign-jsonld document proof-purpose sig-options pp-options
                          #:suite [suite cwebber-signature-2018-suite]
                          #:legacy-signature-field? [legacy-signature-field? #f])
   ;; Expand the document and attach the proof
@@ -264,7 +265,7 @@
   ;; Generate the proof document off the canonicalized document
   (define proof-object
     (send suite make-proof-object
-          expanded-document private-key sig-options proof-purpose pp-options))
+          expanded-document sig-options proof-purpose pp-options))
 
   (define pre-compacted-output
     (hash-set expanded-document sec:proof-sym proof-object))
@@ -501,16 +502,19 @@ raise an exception instead."
   (test-true
    "Correct signature passes verification"
    (lds-verify-jsonld (lds-sign-jsonld lady-gaga-concert #f
-                                       privkey
-                                       some-sig-options #hasheq()
+                                       (hash-set some-sig-options
+                                                 'private-key privkey)
+                                       #hasheq()
                                        #:suite cwebber-signature-2018-suite)
                       #f))
 
   (test-false
    "Signature signed by wrong key fails verification"
    (lds-verify-jsonld (lds-sign-jsonld lady-gaga-concert #f
-                                       privkey2  ; not the same key as in some-sig-options
-                                       some-sig-options #hasheq()
+                                       (hash-set some-sig-options
+                                                 ; not the same key as in some-sig-options
+                                                 'private-key privkey2)
+                                       #hasheq()
                                        #:suite cwebber-signature-2018-suite)
                       #f)))
 
