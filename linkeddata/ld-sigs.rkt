@@ -110,6 +110,21 @@
 (define-values (dc:created dc:created-sym)
   (dc-term "created"))
 
+(define ocap-vocab-url "https://example.org/ocap/v1#")
+(define ocap-term (term-maker ocap-vocab-url))
+
+(define-values (ocap:Capability ocap:Capability-sym)
+  (ocap-term "Capability"))
+(define-values (ocap:caveat ocap:caveat-sym)
+  (ocap-term "caveat"))
+(define-values (ocap:invoker ocap:invoker-sym)
+  (ocap-term "invoker"))
+(define-values (ocap:invokeCapability ocap:invokeCapability-sym)
+  (ocap-term "invokeCapability"))
+(define-values (ocap:parentCapability ocap:parentCapability-sym)
+  (ocap-term "parentCapability"))
+
+
 (define security-context
   (call-with-input-file (build-path "contexts" "security.jsonld")
     read-json))
