@@ -302,24 +302,25 @@
                        ;; #:json-ld-options json-ld-options
                        #:state state))
 
-     (define/public (add-fields-to-proof proof options)
-       (define capability
-         (hash-ref options capability))
-       (when (not (or (hash-eq? capability)
-                      (string? capability)))
-         (error "Capability must be a URI or a capability object"))
-       (define caveats
-         (hash-ref options caveats '()))
-       ;; TODO: Set the following:
-       ;;  - capability (required)
-       ;;  - created (defaults to now)
-       ;;  - creator (required)  ???  I think this is set by the sig suite
+    (define/public (add-fields-to-proof proof options)
+      (define capability
+        (hash-ref options capability))
+      (when (not (or (hash-eq? capability)
+                     (string? capability)))
+        (error "Capability must be a URI or a capability object"))
+      (define caveats
+        (hash-ref options caveats '()))
+      ;; TODO: Set the following:
+      ;;  - capability (required)
+      ;;  - created (defaults to now)
+      ;;  - creator (required)  ???  I think this is set by the sig suite
 
-       ;; (hash-set proof )
-       ;; TODO: Now we need to get the cap chain
-       'TODO)
-     (define/public (verify creator proof)
-       'TODO)))
+      ;; (hash-set proof )
+      ;; TODO: Now we need to get the cap chain
+      'TODO)
+
+    (define/public (verify creator proof)
+      'TODO)))
 
 (define ocap-ld-pp
   (new ocap-ld-pp%))
