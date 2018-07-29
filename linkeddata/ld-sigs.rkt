@@ -43,8 +43,19 @@
  lds-verify-jsonld
  suite-registry
 
+ ;; interfaces for suites/proof-purposes
  suite-interface
- proof-purpose-interface)
+ proof-purpose-interface
+
+ ;; suites
+ cwebber-signature-2018-suite
+
+ ;; proof purposes
+ ocap-ld-pp%
+ ocap-ld-pp
+ notarize-pp
+
+ )
 
 (require linkeddata/json-ld
          linkeddata/n-quads
@@ -249,17 +260,71 @@
      (define/public (verify creator proof)
        #t))))
 
-(define ocap-ld-pp
-  (new
-   (class object%
-     (super-new)
-     (define/public (uri)
-       ;; FIXME
-       "https://example.org/#TODO-ocap-ld")
+;;;; ocap-ld stuff... move me
+
+(define caveat-verifiers
+  (make-parameter #hasheq()))
+
+(define ocap-ld-pp%
+  (class object%
+    (super-new)
+    (define/public (uri)
+      ;; FIXME
+      "https://example.org/#TODO-ocap-ld")
+    (define/public (get-caveat-verifiers)
+      (caveat-verifiers))
+
+    (define/public (load-caveat caveat)
+      'TODO)
+
+    (define/public (verify-caveat caveat
+                                  expanded-invocation
+                                  ;; not sure we need this
+                                  ; #:json-ld-options #hasheq()
+                                  #:state [state #hasheq()])
+      ;; FIXME: We might need to load the caveat from a url
+      ;;   But maybe caveat should already be loaded and expanded by
+      ;;   this point?  Why not?
+      (define caveat-type
+        (match (hash-ref caveat '@type '())
+          [(list type) type]
+          [_ (error "Caveat @type must have exactly one element")]))
+      (define caveat-verifiers
+        (get-caveat-verifiers))
+      ;; Retrieve the verifier for this type
+      (when (not (hash-has-key? caveat-verifiers caveat-type))
+        (error "No verifier supplied for caveat type"))
+      (define caveat-verifier
+        (hash-ref caveat-verifiers caveat-type))
+      ;; Run the caveat verifier, which will raise an exception if the
+      ;; verification fails
+      (caveat-verifier caveat expanded-invocation
+                       ;; #:json-ld-options json-ld-options
+                       #:state state))
+
      (define/public (add-fields-to-proof proof options)
+       (define capability
+         (hash-ref options capability))
+       (when (not (or (hash-eq? capability)
+                      (string? capability)))
+         (error "Capability must be a URI or a capability object"))
+       (define caveats
+         (hash-ref options caveats '()))
+       ;; TODO: Set the following:
+       ;;  - capability (required)
+       ;;  - created (defaults to now)
+       ;;  - creator (required)  ???  I think this is set by the sig suite
+
+       ;; (hash-set proof )
+       ;; TODO: Now we need to get the cap chain
        'TODO)
      (define/public (verify creator proof)
-       'TODO))))
+       'TODO)))
+
+(define ocap-ld-pp
+  (new ocap-ld-pp%))
+
+;;;; end ocap-ld stuff
 
 ;; See https://github.com/w3c-dvcg/ld-signatures/issues/19
 #;(define (lds-sign-quads document sig-options private-key
