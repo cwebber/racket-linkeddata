@@ -125,7 +125,9 @@
 (define ocap-term (term-maker ocap-vocab-url))
 
 (define-values (ocap:Capability ocap:Capability-sym)
-  (ocap-term "Capability"))
+  (ocap-term "Capability"))  ; capability, the type
+(define-values (ocap:capability ocap:capability-sym)
+  (ocap-term "capability"))  ; capability, the property
 (define-values (ocap:caveat ocap:caveat-sym)
   (ocap-term "caveat"))
 (define-values (ocap:invoker ocap:invoker-sym)
@@ -268,6 +270,11 @@
 (define ocap-ld-pp%
   (class object%
     (super-new)
+    (init-field
+     ;; Whether or not to re-fetch object capabilities that are
+     ;; embedded.  Note that it's not necessarily more secure to
+     ;; set this to #t.  <<Analysis of the tradeoffs goes here.>>
+     [refetch-embedded-ocaps? #f])
     (define/public (uri)
       ;; FIXME
       "https://example.org/#TODO-ocap-ld")
@@ -302,6 +309,57 @@
                        ;; #:json-ld-options json-ld-options
                        #:state state))
 
+    ;; make sure that any of the later capability
+    ;; documents are proved by a currently authorized participant
+    ;; NOTES FOR RESTRUCTURING:
+    ;;  okay this is way easier than it was before because now we'll have
+    ;;  already verified that the signature was actually valid, so we just
+    ;;  need to make sure that the signature was really signed by the same
+    ;;  cryptographic material...?
+    ;; TODO: Should this be verify-proofed or verify-stamped?
+    (define/public (verify-proofed-by-authorized cap-doc currently-authorized)
+      'TODO)
+
+    ;; Fetch a capability
+    (define/public (get-capability cap-uri)
+      (http-get-jsonld cap-uri))
+
+    ;; Get the capability chain as a list of fully expanded json-ld documents,
+    ;; starting with the root capability document and working from there.
+    (define/public (get-cap-chain ocap-proof)
+      ;; This is to prevent cyclical fetching.  Not a problem
+      ;; when the capabilities are embedded, but definitely a
+      ;; problem when we fetch
+      (define fetched (mutable-set))
+      ;; get-capability with cycle prevention
+      (define (safe-get-capability cap-uri)
+        (when (set-member? fetched cap-uri)
+          (error "Cyclical capability chain detected"))
+        (set-add! fetched cap-uri)
+        (get-capability cap-uri))
+
+      (let lp ([cap-or-uri (hash-ref ocap-proof ocap:capability-sym)]
+               [cap-chain '()])
+        (define cap
+          (match cap-or-uri
+            ;; looks like a uri
+            [(? string? cap-uri)
+             (get-capability cap-uri)]
+            [(? hash-eq? cap)
+             (if refetch-embedded-ocaps?
+                 (if (hash-has-key? cap '@id)
+                     (safe-get-capability (hash-ref cap '@id))
+                     (error "No @id on capability and refetch-embedded-ocaps? set to #t"))
+                 cap)]))
+
+        (let ([cap-chain (cons cap cap-chain)])
+          (match (hash-ref cap ocap:parentCapability-sym '())
+            ;; We're done here, this must be the root
+            ['() cap-chain]
+            [(list parent-cap-or-uri)
+             (lp parent-cap-or-uri cap-chain)]
+            [_ (error "parentCapability should be empty or have a single value")]))))
+
     (define/public (add-fields-to-proof proof options)
       (define capability
         (hash-ref options capability))
@@ -318,7 +376,7 @@
       ;; (hash-set proof )
       ;; TODO: Now we need to get the cap chain
       'TODO)
-
+    
     (define/public (verify creator proof)
       'TODO)))
 
