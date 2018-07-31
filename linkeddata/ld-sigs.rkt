@@ -136,7 +136,12 @@
   (ocap-term "invokeCapability"))
 (define-values (ocap:parentCapability ocap:parentCapability-sym)
   (ocap-term "parentCapability"))
-
+(define-values (ocap:invocationTarget ocap:invocationTarget-sym)
+  (ocap-term "invocationTarget"))
+(define-values (ocap:grantCapability ocap:grantCapability-sym)
+  (ocap-term "grantCapability"))
+(define-values (ocap:allowedAction ocap:allowedAction-sym)
+  (ocap-term "allowedAction"))
 
 (define security-context
   (call-with-input-file (build-path "contexts" "security.jsonld")
@@ -144,6 +149,19 @@
 
 (define (not-implemented)
   (error "Not implemented"))
+
+;; An object that, at minimum, has an @id
+(define (object-with-id? obj)
+  (and (hash-eq? obj)
+       (hash-has-key? obj '@id)))
+
+;; An object that has one and only one key, an @id
+(define (id-only-object? obj)
+  (and (object-with-id? obj)
+       (= (hash-count obj) 1)))
+
+(define (object-id obj)
+  (hash-ref obj '@id))
 
 (define suite-interface
   (interface ()
@@ -223,7 +241,8 @@
      ;; Note that we need to canonicalize the doc *as this proof is expected to check it*
      ;; at this stage.  That means modifying the proof section before normalization
      ;; appropriately.
-     (define/public (verify-proof canonicalized-doc creator proof proof-purpose)
+     (define/public (verify-proof canonicalized-doc creator proof proof-purpose
+                                  pp-expectations)
        ;; TODO: Iterate through all keys until we find the right one?
        ;; (define pubkey-field
        ;;   (car (hash-ref creator sec:publicKey-sym)))
@@ -237,7 +256,7 @@
             (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
        (and (digest/verify pubkey 'sha256 canonicalized-doc sig-value)
             (or (not proof-purpose)
-                (send proof-purpose verify creator proof)))))))
+                (send proof-purpose verify creator proof pp-expectations)))))))
 
 (define proof-purpose-interface
   (interface ()
@@ -271,10 +290,10 @@
   (class object%
     (super-new)
     (init-field
-     ;; Whether or not to re-fetch object capabilities that are
-     ;; embedded.  Note that it's not necessarily more secure to
-     ;; set this to #t.  <<Analysis of the tradeoffs goes here.>>
-     [refetch-embedded-ocaps? #f])
+     ;; Whether or not to re-fetch object capabilities and keys that are
+     ;; embedded.  Note that it's not necessarily more secure to set this to
+     ;; #t.  <<Analysis of the tradeoffs goes here.>>
+     [refetch-embedded? #f])
     (define/public (uri)
       ;; FIXME
       "https://example.org/#TODO-ocap-ld")
@@ -321,7 +340,7 @@
       'TODO)
 
     ;; Fetch a capability
-    (define/public (get-capability cap-uri)
+    (define/public (fetch-capability cap-uri)
       (http-get-jsonld cap-uri))
 
     ;; Get the capability chain as a list of fully expanded json-ld documents,
@@ -331,12 +350,12 @@
       ;; when the capabilities are embedded, but definitely a
       ;; problem when we fetch
       (define fetched (mutable-set))
-      ;; get-capability with cycle prevention
-      (define (safe-get-capability cap-uri)
+      ;; fetch-capability with cycle prevention
+      (define (safe-fetch-capability cap-uri)
         (when (set-member? fetched cap-uri)
           (error "Cyclical capability chain detected"))
         (set-add! fetched cap-uri)
-        (get-capability cap-uri))
+        (fetch-capability cap-uri))
 
       (let lp ([cap-or-uri (hash-ref ocap-proof ocap:capability-sym)]
                [cap-chain '()])
@@ -344,12 +363,12 @@
           (match cap-or-uri
             ;; looks like a uri
             [(? string? cap-uri)
-             (get-capability cap-uri)]
+             (fetch-capability cap-uri)]
             [(? hash-eq? cap)
-             (if refetch-embedded-ocaps?
+             (if refetch-embedded?
                  (if (hash-has-key? cap '@id)
-                     (safe-get-capability (hash-ref cap '@id))
-                     (error "No @id on capability and refetch-embedded-ocaps? set to #t"))
+                     (safe-fetch-capability (hash-ref cap '@id))
+                     (error "No @id on capability and refetch-embedded? set to #t"))
                  cap)]))
 
         (let ([cap-chain (cons cap cap-chain)])
@@ -359,6 +378,12 @@
             [(list parent-cap-or-uri)
              (lp parent-cap-or-uri cap-chain)]
             [_ (error "parentCapability should be empty or have a single value")]))))
+
+    (define (fetch-target target-uri)
+      (http-get-jsonld target-uri))
+
+    (define (assert-expected-target expected-target target)
+      (error "TODO"))
 
     (define/public (add-fields-to-proof proof options)
       (define capability
@@ -377,11 +402,147 @@
       ;; TODO: Now we need to get the cap chain
       'TODO)
     
-    (define/public (verify creator proof)
-      'TODO)))
+    (define/public (verify creator proof expectations)
+      (call/cc
+       (lambda (return)
+         (define cap-chain
+           (get-cap-chain proof))
+         (define expected-target
+           (hash-ref proof ocap:invocationTarget-sym))
+         (define r-cap-chain
+           (reverse cap-chain))
+         ;; the root of the capability chain is treated a bit differently...?
+         (define cap-root
+           (car r-cap-chain))
+         (define cap-tail
+           (cdr r-cap-chain))
+
+         ;; The target is what will be invoked against.
+
+         ;; TODO: We need to make sure that the target is us?  Do we do
+         ;;   that on another layer?
+         (define target
+           (match (hash-ref cap-root ocap:invocationTarget-sym '())
+             [(list (? string? target-uri))
+              (fetch-target target-uri)]
+             ;; FIXME: Sigh, I'm unhappy with this.  We have inconsistent behavior
+             ;;   about when we do and don't re-fetch objects...
+             [(list (? hash-eq? target-ocap))
+              (if refetch-embedded?
+                  (if (hash-has-key? target-ocap '@id)
+                      (let ([target-id (hash-ref target-ocap '@id)])
+                        ;; prevent recursion attack
+                        (when (equal? target-id (hash-ref cap-root '@id 'nothing))
+                          (error "Recursive inclusion attack detected"))
+                        (fetch-target target-id))
+                      (error "No @id on target and refetch-embedded? set to #t"))
+                  target-ocap)]
+             [_ (error "`target' field must have one and only one value")]))
+
+         ;; FIXME: Write this
+         (assert-expected-target expected-target target)
+
+         ;; Extract the initial currently-authorized from the target's
+         ;; grantCapability key
+         (define currently-authorized
+           (hash-ref target ocap:grantCapability-sym '()))
+
+         (define (cap-signed-by-currently-authorized? cap)
+           (lds-verify-jsonld cap-root
+                              ;; Maybe this makes a good case for pp-expectations actually
+                              ;; being init values for a proof-purpose
+                              grant-capability-pp
+                              #:pp-expectations
+                              `#hasheq((authorized-granters . ,currently-authorized))))
+
+         (define (ensure-cap-authorized cap)
+           (unless (cap-signed-by-currently-authorized? cap)
+             (return #f)))
+
+         ;; The number of authorized invokers grows from each capability chain
+         ;; document
+         (define (extend-authorized cap)
+           (match (hash-ref cap ocap:invoker-sym)
+             ;; FIXME: Come back and make decisions about when we do and don't
+             ;;   re-fetch these things.
+             ;; For right now for invokers I guess we'll just assume it's id-only
+             ;; objects.
+             ['()
+              (error "Having an empty invoker list doesn't make sense")]
+             [(list (? id-only-object? invokers) ...)
+              (set! currently-authorized
+                    (append (map object-id invokers)
+                            currently-authorized))]))
+
+         ;;;;;; Root stuff starts here
+         ;; We treat the root slightly differently because it's required to
+         ;; have certain information that "sets up" the rest of teh chain
+         ;; Make sure the root cap is signed by the target
+         (ensure-cap-authorized cap-root)
+         
+         ;; Next, let's determine what the initial actions are (these will only
+         ;;   be restricted as it goes on)
+         (define allowed-actions
+           (match (hash-ref cap-root ocap:allowedAction-sym)
+             ['()
+              (error "allowedAction must not be empty")]
+
+             [(list (? id-only-object?) ...)
+              (map object-id allowed-actions)]
+
+             [_ (error "allowedAction values must be a uri")]))
+
+         ;; Extract the initial authorized participants / grantees
+         (extend-authorized cap-root)
+         ;;;;;; Root stuff ends here
+         
+         ;; Now for everything else!  It's similar to the root.
+         (for ([cap cap-tail])
+           ;; Ensure it's authorized
+           (ensure-cap-authorized cap)
+
+           ;; Are actions specified?  Then we should narrow
+           ;; the allowed set of actions
+           (match (hash-ref cap ocap:allowedAction-sym '())
+             ;; No actions?  No-op!
+             ['() (void)]
+             [(list (? id-only-object? action-id-objects) ...)
+              ;; Narrow the set of allowed actions
+              (set! allowed-actions
+                    (for/list ([a-id-obj action-id-objects])
+                      (define a-id
+                        (object-id a-id-obj))
+                      (when (not (member? allowed-actions))
+                        (error "Actions can only be restricted in a capability chain"))))])
+
+           ;; Next let's extend the authorized list
+           (extend-authorized cap))
+
+         ;; Okay, now that we've validated the list of authorized entities,
+         ;; is the creator of this signature actually amongst them?
+         ;; FIXME: We're just comparing ids.  Is that sufficient?
+         ;;   Is it correct?
+         #;(unless (member? (object-id creator)
+                          )
+           (return #f))
+
+         ;; Also this invocation's type should be within the allowedActions
+
+         ;; What about the caveats, are those valid?
+
+         ;; Okay... looks like we're solid...
+         #t)))))
 
 (define ocap-ld-pp
   (new ocap-ld-pp%))
+
+(define grant-capability-pp%
+  (class object%
+    (super-new)
+    'TODO))
+
+(define grant-capability-pp
+  (new grant-capability-pp%))
 
 ;;;; end ocap-ld stuff
 
@@ -489,13 +650,58 @@
    (make-registry
     (list notarize-pp ocap-ld-pp))))
 
+;; Filter proofs for a proof purpose, or multiple proof purposes
+;; ((listof hash-eq?)
+;;  (or/c 'all #f (implementation?/c proof-purpose-interface)
+;;        (listof (or/c #f
+;;                      (implementation?/c proof-purpose-interface))))
+;;  . -> .
+;;  (listof hash-eq?))
+(define (filter-proofs-for-pp proofs expected-pp)
+  (if (eq? expected-pp 'all)
+      ;; if the "all" flag is given, then we want to check all proofs,
+      ;; regardless of proofPurpose.
+      proofs
+      ;; otherwise, let's filter them
+      (filter (lambda (p-node)
+                (define (check-one expected-pp)
+                  (cond
+                    ;; expected proofPurpose is empty, and the empty
+                    ;; flag was supplied
+                    [(and (not (hash-has-key? p-node sec:proofPurpose-sym))
+                          (eq? expected-pp #f))
+                     #t]
+                    ;; a specific proof-purpose
+                    ;; TODO: Should we allow passing in proof purpose urls
+                    ;;   rather than proof-purpose objects?
+                    [(and (is-a? expected-pp proof-purpose-interface)
+                          (hash-has-key? p-node sec:proofPurpose-sym)
+                          (equal? (send expected-pp url)
+                                  (car (hash-ref p-node sec:proofPurpose-sym))))
+                     #t]
+                    ;; doesn't match any of those...
+                    [else #f]))
+                (cond
+                  ;; Do any of these match?
+                  [(list? expected-pp)
+                   (call/ec
+                    (lambda (return)
+                      (for ([e-pp expected-pp])
+                        (when (check-one e-pp)
+                          (return #t)))
+                      #f))]
+                  [else
+                   (check-one expected-pp)]))
+              proofs)))
+
 (define (lds-verify-jsonld signed-document
                            ;; (or/c 'all #f (implementation?/c proof-purpose-interface)
                            ;;       (listof (or/c #f
                            ;;                     (implementation?/c proof-purpose-interface))))
                            expected-pp
                            #:fetch-jsonld [fetch-jsonld http-get-jsonld]
-                           #:empty-proof-purpose-ok? [empty-proof-purpose-ok? #f])
+                           ;; FIXME: Make use of these!
+                           #:pp-expectations [pp-expectations #hasheq()])
   "Returns a boolean identifying whether the signature succeeded or failed.
 If any object, such as the key or etc is unable to be retrieved, this will
 raise an exception instead."
@@ -517,43 +723,8 @@ raise an exception instead."
              [else (error "Missing proof/signature field")]))
 
      (define proofs
-       (let ([all-proofs
-              (hash-ref expanded proof-key '())])
-         (if (eq? expected-pp 'all)
-             ;; if the "all" flag is given, then we want to check all proofs,
-             ;; regardless of proofPurpose.
-             all-proofs
-             ;; otherwise, let's filter them
-             (filter (lambda (p-node)
-                       (define (check-one expected-pp)
-                         (cond
-                           ;; expected proofPurpose is empty, and the empty
-                           ;; flag was supplied
-                           [(and (not (hash-has-key? p-node sec:proofPurpose-sym))
-                                 (eq? expected-pp #f))
-                            #t]
-                           ;; a specific proof-purpose
-                           ;; TODO: Should we allow passing in proof purpose urls
-                           ;;   rather than proof-purpose objects?
-                           [(and (is-a? expected-pp proof-purpose-interface)
-                                 (hash-has-key? p-node sec:proofPurpose-sym)
-                                 (equal? (send expected-pp url)
-                                         (car (hash-ref p-node sec:proofPurpose-sym))))
-                            #t]
-                           ;; doesn't match any of those...
-                           [else #f]))
-                       (cond
-                         ;; Do any of these match?
-                         [(list? expected-pp)
-                          (call/ec
-                           (lambda (return)
-                             (for ([e-pp expected-pp])
-                               (when (check-one e-pp)
-                                 (return #t)))
-                             #f))]
-                         [else
-                          (check-one expected-pp)]))
-                     all-proofs))))
+       (filter-proofs-for-pp (hash-ref expanded proof-key '())
+                             expected-pp))
      
      (when (eq? proofs '())
        (error (format "No proofs matching expected-pp found: ~a"
@@ -617,7 +788,7 @@ raise an exception instead."
 
        ;; If this node isn't valid, then we return #f.
        (when (not (send suite verify-proof canonicalized-document creator
-                        proof-node proof-purpose))
+                        proof-node proof-purpose pp-expectations))
          (return #f)))
      #t)))
 
