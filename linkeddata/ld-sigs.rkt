@@ -241,7 +241,8 @@
      ;; Note that we need to canonicalize the doc *as this proof is expected to check it*
      ;; at this stage.  That means modifying the proof section before normalization
      ;; appropriately.
-     (define/public (verify-proof canonicalized-doc creator proof proof-purpose
+     (define/public (verify-proof canonicalized-doc expanded-document
+                                  creator proof proof-purpose
                                   pp-expectations)
        ;; TODO: Iterate through all keys until we find the right one?
        ;; (define pubkey-field
@@ -256,7 +257,8 @@
             (base64-decode (string->bytes/utf-8 (hash-ref sv '@value)))]))
        (and (digest/verify pubkey 'sha256 canonicalized-doc sig-value)
             (or (not proof-purpose)
-                (send proof-purpose verify creator proof pp-expectations)))))))
+                (send proof-purpose verify expanded-document creator
+                      proof pp-expectations)))))))
 
 (define proof-purpose-interface
   (interface ()
@@ -402,7 +404,7 @@
       ;; TODO: Now we need to get the cap chain
       'TODO)
     
-    (define/public (verify creator proof expectations)
+    (define/public (verify document creator proof expectations)
       (call/cc
        (lambda (return)
          (define cap-chain
@@ -522,13 +524,24 @@
          ;; is the creator of this signature actually amongst them?
          ;; FIXME: We're just comparing ids.  Is that sufficient?
          ;;   Is it correct?
-         #;(unless (member? (object-id creator)
-                          )
+         (unless (member? (object-id creator)
+                          currently-authorized)
            (return #f))
 
          ;; Also this invocation's type should be within the allowedActions
+         ;; TODO: Do we want to support the document having more than
+         ;;   one "action" type?
+         (let* ([document-type
+                 (match (hash-ref document '@type '())
+                   [(list type) type])])
+           (unless (member? document-type allowed-actions)
+             (error "Document's action type not part of the list of allowed actions")))
 
          ;; What about the caveats, are those valid?
+         (for/list ([cap r-cap-chain])
+           (for ([caveat (hash-ref cap ocap:caveat '())]
+)
+             ))
 
          ;; Okay... looks like we're solid...
          #t)))))
@@ -787,7 +800,8 @@ raise an exception instead."
        (create-verify-hash canonicalized-document suite proof-node))
 
        ;; If this node isn't valid, then we return #f.
-       (when (not (send suite verify-proof canonicalized-document creator
+       (when (not (send suite verify-proof signed-document
+                        expanded creator
                         proof-node proof-purpose pp-expectations))
          (return #f)))
      #t)))
