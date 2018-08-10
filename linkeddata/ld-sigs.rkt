@@ -42,6 +42,7 @@
 
  lds-verify-jsonld
  suite-registry
+ caveat-registry
 
  ;; interfaces for suites/proof-purposes
  suite-interface
@@ -132,14 +133,14 @@
   (ocap-term "caveat"))
 (define-values (ocap:invoker ocap:invoker-sym)
   (ocap-term "invoker"))
-(define-values (ocap:invokeCapability ocap:invokeCapability-sym)
-  (ocap-term "invokeCapability"))
+(define-values (ocap:capabilityInvocation ocap:capabilityInvocation-sym)
+  (ocap-term "capabilityInvocation"))
 (define-values (ocap:parentCapability ocap:parentCapability-sym)
   (ocap-term "parentCapability"))
 (define-values (ocap:invocationTarget ocap:invocationTarget-sym)
   (ocap-term "invocationTarget"))
-(define-values (ocap:grantCapability ocap:grantCapability-sym)
-  (ocap-term "grantCapability"))
+(define-values (ocap:capabilityGrant ocap:capabilityGrant-sym)
+  (ocap-term "capabilityGrant"))
 (define-values (ocap:allowedAction ocap:allowedAction-sym)
   (ocap-term "allowedAction"))
 
@@ -445,9 +446,9 @@
          (assert-expected-target expected-target target)
 
          ;; Extract the initial currently-authorized from the target's
-         ;; grantCapability key
+         ;; capabilityGrant key
          (define currently-authorized
-           (hash-ref target ocap:grantCapability-sym '()))
+           (hash-ref target ocap:capabilityGrant-sym '()))
 
          (define (cap-signed-by-currently-authorized? cap)
            (lds-verify-jsonld cap-root
@@ -487,7 +488,7 @@
          (define allowed-actions
            (match (hash-ref cap-root ocap:allowedAction-sym)
              ['()
-              (error "allowedAction must not be empty")]
+              (error "root capability allowedAction must not be empty")]
 
              [(list (? id-only-object?) ...)
               (map object-id allowed-actions)]
@@ -514,8 +515,9 @@
                     (for/list ([a-id-obj action-id-objects])
                       (define a-id
                         (object-id a-id-obj))
-                      (when (not (member? allowed-actions))
-                        (error "Actions can only be restricted in a capability chain"))))])
+                      (when (not (member a-id allowed-actions))
+                        (error "Actions can only be restricted in a capability chain"))
+                      a-id))])
 
            ;; Next let's extend the authorized list
            (extend-authorized cap))
@@ -524,7 +526,7 @@
          ;; is the creator of this signature actually amongst them?
          ;; FIXME: We're just comparing ids.  Is that sufficient?
          ;;   Is it correct?
-         (unless (member? (object-id creator)
+         (unless (member (object-id creator)
                           currently-authorized)
            (return #f))
 
@@ -534,14 +536,23 @@
          (let* ([document-type
                  (match (hash-ref document '@type '())
                    [(list type) type])])
-           (unless (member? document-type allowed-actions)
+           (unless (member document-type allowed-actions)
              (error "Document's action type not part of the list of allowed actions")))
 
          ;; What about the caveats, are those valid?
          (for/list ([cap r-cap-chain])
-           (for ([caveat (hash-ref cap ocap:caveat '())]
-)
-             ))
+           (for ([caveat (hash-ref cap ocap:caveat '())])
+             (define caveat-type
+               (match (hash-ref caveat '@type '())
+                 [(list type) type]
+                 [anything-else (error (format "Caveats must have one and only one type but got ~a"
+                                               anything-else))]))
+             (define caveat-checker
+               (or (hash-ref (caveat-registry) caveat-type #f)
+                   (error (format "No caveat found for type ~a" caveat-type))))
+
+             (when (not (send caveat-checker check caveat proof document expectations))
+               (error (format "Caveat with type ~a does not pass" caveat-type)))))
 
          ;; Okay... looks like we're solid...
          #t)))))
@@ -662,6 +673,12 @@
   (make-parameter
    (make-registry
     (list notarize-pp ocap-ld-pp))))
+
+(define caveat-registry
+  (make-parameter
+   (make-registry
+    (list))))
+
 
 ;; Filter proofs for a proof purpose, or multiple proof purposes
 ;; ((listof hash-eq?)
