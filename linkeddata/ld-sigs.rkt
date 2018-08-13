@@ -817,7 +817,7 @@ raise an exception instead."
        (create-verify-hash canonicalized-document suite proof-node))
 
        ;; If this node isn't valid, then we return #f.
-       (when (not (send suite verify-proof signed-document
+       (when (not (send suite verify-proof canonicalized-document
                         expanded creator
                         proof-node proof-purpose pp-expectations))
          (return #f)))
