@@ -52,8 +52,8 @@
  cwebber-signature-2018-suite
 
  ;; proof purposes
- ocap-ld-invoke-pp%
- ocap-ld-invoke-pp
+ ocap-ld-invocation-pp%
+ ocap-ld-invocation-pp
  notarize-pp
 
  )
@@ -557,8 +557,8 @@
          ;; Okay... looks like we're solid...
          #t)))))
 
-(define ocap-ld-invoke-pp
-  (new ocap-ld-invoke-pp%))
+(define ocap-ld-invocation-pp
+  (new ocap-ld-invocation-pp%))
 
 (define grant-capability-pp%
   (class object%
@@ -672,7 +672,7 @@
 (define proof-purpose-registry
   (make-parameter
    (make-registry
-    (list notarize-pp ocap-ld-invoke-pp))))
+    (list notarize-pp ocap-ld-invocation-pp))))
 
 (define caveat-registry
   (make-parameter
