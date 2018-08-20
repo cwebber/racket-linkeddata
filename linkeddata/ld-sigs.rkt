@@ -52,8 +52,8 @@
  cwebber-signature-2018-suite
 
  ;; proof purposes
- ocap-ld-pp%
- ocap-ld-pp
+ ocap-ld-invoke-pp%
+ ocap-ld-invoke-pp
  notarize-pp
 
  )
@@ -289,7 +289,7 @@
 (define caveat-verifiers
   (make-parameter #hasheq()))
 
-(define ocap-ld-pp%
+(define ocap-ld-invoke-pp%
   (class object%
     (super-new)
     (init-field
@@ -557,8 +557,8 @@
          ;; Okay... looks like we're solid...
          #t)))))
 
-(define ocap-ld-pp
-  (new ocap-ld-pp%))
+(define ocap-ld-invoke-pp
+  (new ocap-ld-invoke-pp%))
 
 (define grant-capability-pp%
   (class object%
@@ -672,7 +672,7 @@
 (define proof-purpose-registry
   (make-parameter
    (make-registry
-    (list notarize-pp ocap-ld-pp))))
+    (list notarize-pp ocap-ld-invoke-pp))))
 
 (define caveat-registry
   (make-parameter
