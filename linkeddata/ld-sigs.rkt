@@ -205,7 +205,7 @@
                (hash-set proof-obj key val)))
        ;; Add created field, defaulting to today
        (proof-set! dc:created-sym
-                   (or (hash-ref sig-options dc:created-sym #f)
+                   (or (hash-ref sig-options 'created #f)
                        (http-date-str (seconds->date (current-seconds) #f))))
        (define (maybe-add-to-proof! options-key set-key)
          (when (hash-has-key? sig-options options-key)
@@ -390,7 +390,7 @@
 
     (define/public (add-fields-to-proof proof options)
       (define capability
-        (hash-ref options capability))
+        (hash-ref options 'parentCapability))
       (when (not (or (hash-eq? capability)
                      (string? capability)))
         (error "Capability must be a URI or a capability object"))
