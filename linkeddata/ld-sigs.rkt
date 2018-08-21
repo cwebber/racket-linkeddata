@@ -289,7 +289,7 @@
 (define caveat-verifiers
   (make-parameter #hasheq()))
 
-(define ocap-ld-invoke-pp%
+(define ocap-ld-invocation-pp%
   (class object%
     (super-new)
     (init-field
