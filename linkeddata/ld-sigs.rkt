@@ -139,8 +139,8 @@
   (ocap-term "parentCapability"))
 (define-values (ocap:invocationTarget ocap:invocationTarget-sym)
   (ocap-term "invocationTarget"))
-(define-values (ocap:capabilityGrant ocap:capabilityGrant-sym)
-  (ocap-term "capabilityGrant"))
+(define-values (ocap:capabilityDelegate ocap:capabilityDelegate-sym)
+  (ocap-term "capabilityDelegate"))
 (define-values (ocap:allowedAction ocap:allowedAction-sym)
   (ocap-term "allowedAction"))
 
@@ -446,9 +446,9 @@
          (assert-expected-target expected-target target)
 
          ;; Extract the initial currently-authorized from the target's
-         ;; capabilityGrant key
+         ;; capabilityDelegate key
          (define currently-authorized
-           (hash-ref target ocap:capabilityGrant-sym '()))
+           (hash-ref target ocap:capabilityDelegate-sym '()))
 
          (define (cap-signed-by-currently-authorized? cap)
            (lds-verify-jsonld cap-root
